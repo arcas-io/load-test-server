@@ -1,0 +1,39 @@
+[package]
+name = "proxy"
+version = "0.1.0"
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.41"
+async-trait = "0.1.50"
+bytes = "1.0.1"
+env_logger = "0.8.4"
+futures = "0.3"
+futures-util = "0.3.15"
+lazy_static = "1.4.0"
+log = "0.4.14"
+thiserror = "1.0.26"
+openssl = "0.10.11"
+rcgen = "0.8.11"
+rustls = "0.19.1"
+ring = "0.16.20"
+sdp = "0.2.1"
+serde = { version = "1.0.126", features = ["derive"] }
+serde_json = "1.0.64"
+srtp = { version = "0.7.0", features = ["log"] }
+tokio = { version = "1.8.1", features = ["full"] }
+tokio-codec = "0.1.2"
+tokio-io = "0.1.13"
+tokio-openssl = "0.6.2"
+tokio-tls = "0.3.1"
+warp = "0.3.1"
+webrtc = "0.0.6"
+webrtc-dtls = "0.2.2"
+webrtc-ice = "0.2.3"
+webrtc-util = "0.2.3"
+udp-dtls = "0.1.0"
+
+# [dependencies.webrtc-dtls]
+# path = "../../dtls"
