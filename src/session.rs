@@ -1,7 +1,9 @@
 use crate::server::{webrtc, MyWebRtc};
+use libwebrtc::peerconnection::PeerConnection as LibWebRtcPeerConnection;
 use nanoid::nanoid;
 use std::collections::HashMap;
 use tonic::{Request, Response, Status};
+use tracing::info;
 use webrtc::web_rtc_server::WebRtc;
 use webrtc::{CreateSessionRequest, CreateSessionResponse};
 
@@ -10,7 +12,7 @@ pub(crate) struct PeerConnection {
     id: String,
     session_id: String,
     name: String,
-    // internal_peer_connection: PeerConnectionFfi,
+    internal_peer_connection: LibWebRtcPeerConnection,
 }
 
 #[derive(Debug)]
@@ -42,7 +44,7 @@ impl WebRtc for MyWebRtc {
         &self,
         request: Request<CreateSessionRequest>,
     ) -> Result<Response<CreateSessionResponse>, Status> {
-        println!("{:?}", request);
+        info!("{:?}", request);
 
         // create a new session
         let name = request.into_inner().name;
@@ -58,7 +60,7 @@ impl WebRtc for MyWebRtc {
 
         let reply = webrtc::CreateSessionResponse { session_id };
 
-        println!("{:?}", &self.sessions);
+        info!("{:?}", &self.sessions);
 
         Ok(Response::new(reply))
     }
