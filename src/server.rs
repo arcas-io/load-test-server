@@ -1,3 +1,4 @@
+use crate::error::{Result, ServerError};
 use crate::session::SessionStorage;
 use std::sync::{Arc, Mutex};
 use tonic::transport::Server;
@@ -13,7 +14,7 @@ pub(crate) struct MyWebRtc {
     pub(crate) sessions: Arc<Mutex<SessionStorage>>,
 }
 
-pub(crate) async fn run(addr: &str) -> Result<(), Box<dyn std::error::Error>> {
+pub(crate) async fn serve(addr: &str) -> Result<()> {
     tracing_subscriber::fmt::init();
 
     let addr = addr.parse()?;
@@ -25,7 +26,11 @@ pub(crate) async fn run(addr: &str) -> Result<(), Box<dyn std::error::Error>> {
 
     info!("Starting gPRC service on {:?}", addr);
 
-    Server::builder().add_service(service).serve(addr).await?;
+    Server::builder()
+        .add_service(service)
+        .serve(addr)
+        .await
+        .map_err(|e| ServerError::InternalError(e.to_string()))?;
 
     Ok(())
 }

@@ -1,10 +1,12 @@
+mod error;
 mod server;
 mod session;
 
-use crate::server::run;
+use crate::error::Result;
+use crate::server::serve;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<()> {
     let addr = "[::1]:50051";
-    run(addr).await
+    serve(addr).await
 }

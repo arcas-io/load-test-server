@@ -1,7 +1,9 @@
+use crate::error::Result;
 use crate::server::{webrtc, MyWebRtc};
 use libwebrtc::peerconnection::PeerConnection as LibWebRtcPeerConnection;
 use nanoid::nanoid;
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use tonic::{Request, Response, Status};
 use tracing::info;
 use webrtc::web_rtc_server::WebRtc;
@@ -43,7 +45,7 @@ impl WebRtc for MyWebRtc {
     async fn create_session(
         &self,
         request: Request<CreateSessionRequest>,
-    ) -> Result<Response<CreateSessionResponse>, Status> {
+    ) -> std::result::Result<Response<CreateSessionResponse>, Status> {
         info!("{:?}", request);
 
         // create a new session
@@ -51,17 +53,23 @@ impl WebRtc for MyWebRtc {
         let session = Session::new(name);
         let session_id = session.id.clone();
 
-        // add the new session to &self.sessions
-        &self
-            .sessions
-            .lock()
-            .unwrap()
-            .insert(session_id.clone(), session);
+        // add the new session to sessions in internal state
+        add_session(session_id.clone(), session, self.sessions.clone())?;
 
         let reply = webrtc::CreateSessionResponse { session_id };
 
-        info!("{:?}", &self.sessions);
-
         Ok(Response::new(reply))
     }
+}
+
+fn add_session(
+    session_id: String,
+    session: Session,
+    sessions: Arc<Mutex<SessionStorage>>,
+) -> Result<()> {
+    info!("Added session: {:?}", session);
+
+    sessions.lock()?.insert(session_id, session);
+
+    Ok(())
 }
