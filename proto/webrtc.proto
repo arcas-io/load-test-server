@@ -1,0 +1,10 @@
+syntax = "proto3";
+package webrtc;
+
+service WebRtc {
+  rpc CreateSession(CreateSessionRequest) returns (CreateSessionResponse);
+}
+
+message CreateSessionRequest { string name = 1; }
+
+message CreateSessionResponse { string session_id = 1; }
