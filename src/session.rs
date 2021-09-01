@@ -48,28 +48,51 @@ impl WebRtc for MyWebRtc {
     ) -> std::result::Result<Response<CreateSessionResponse>, Status> {
         info!("{:?}", request);
 
-        // create a new session
         let name = request.into_inner().name;
-        let session = Session::new(name);
-        let session_id = session.id.clone();
-
-        // add the new session to sessions in internal state
-        add_session(session_id.clone(), session, self.sessions.clone())?;
-
+        let session_id = add_session(name, self.sessions.clone())?;
         let reply = webrtc::CreateSessionResponse { session_id };
 
         Ok(Response::new(reply))
     }
 }
 
-fn add_session(
-    session_id: String,
-    session: Session,
-    sessions: Arc<Mutex<SessionStorage>>,
-) -> Result<()> {
+// Add a new session to sessions (in internal state)
+fn add_session(name: String, sessions: Arc<Mutex<SessionStorage>>) -> Result<String> {
+    let session = Session::new(name);
+    let session_id = session.id.clone();
+
     info!("Added session: {:?}", session);
 
-    sessions.lock()?.insert(session_id, session);
+    sessions.lock()?.insert(session_id.clone(), session);
 
-    Ok(())
+    Ok(session_id)
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+    use crate::session::SessionStorage;
+    use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn it_adds_a_session() {
+        let session_storage = SessionStorage::new();
+        let sessions = Arc::new(Mutex::new(session_storage));
+        let session_id = add_session("New Session".into(), sessions.clone()).unwrap();
+
+        assert_eq!(
+            session_id,
+            sessions.lock().unwrap().get(&session_id).unwrap().id
+        );
+    }
+
+    // TODO: add int tests, running the server in a lazy static (if possible)
+    // #[tokio::test]
+    // async fn it_creates_a_session() {
+    //     tokio::task::spawn(async {
+    //         let addr = "[::1]:50051";
+    //         serve(addr).await.unwrap();
+    //     });
+    // }
 }
