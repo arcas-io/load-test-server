@@ -3,8 +3,20 @@ package webrtc;
 
 service WebRtc {
   rpc CreateSession(CreateSessionRequest) returns (CreateSessionResponse);
+  rpc StartSession(StartSessionRequest) returns (Empty);
+  rpc StopSession(StopSessionRequest) returns (Empty);
 }
 
-message CreateSessionRequest { string name = 1; }
+message Empty {}
 
+// Create Session
+message CreateSessionRequest { string name = 1; }
 message CreateSessionResponse { string session_id = 1; }
+
+// Start Session
+message StartSessionRequest { string session_id = 1; }
+message StartSessionResponse {}
+
+// Stop Session
+message StopSessionRequest { string session_id = 1; }
+message StopSessionResponse {}

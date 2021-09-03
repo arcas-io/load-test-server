@@ -10,6 +10,9 @@ pub enum ServerError {
     #[error("Internal error: {0}")]
     InternalError(String),
 
+    #[error("Session {0} does not exist")]
+    InvalidSessionError(String),
+
     #[error("Parse error: {0}")]
     ParseError(String),
 }

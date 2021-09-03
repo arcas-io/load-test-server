@@ -1,13 +1,20 @@
 use crate::error::Result;
-use crate::server::{webrtc, MyWebRtc};
 use libwebrtc::peerconnection::PeerConnection as LibWebRtcPeerConnection;
 use nanoid::nanoid;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use tonic::{Request, Response, Status};
+use std::time::SystemTime;
 use tracing::info;
-use webrtc::web_rtc_server::WebRtc;
-use webrtc::{CreateSessionRequest, CreateSessionResponse};
+
+pub(crate) type SessionStorage = HashMap<String, Session>;
+pub(crate) type PeerConnections = HashMap<String, PeerConnection>;
+
+#[derive(Debug, PartialEq)]
+pub(crate) enum State {
+    Created,
+    Started,
+    Stopped,
+}
 
 #[derive(Debug)]
 pub(crate) struct PeerConnection {
@@ -19,9 +26,12 @@ pub(crate) struct PeerConnection {
 
 #[derive(Debug)]
 pub(crate) struct Session {
-    id: String,
-    name: String,
-    peer_connections: PeerConnections,
+    pub(crate) id: String,
+    pub(crate) name: String,
+    pub(crate) peer_connections: PeerConnections,
+    pub(crate) state: State,
+    pub(crate) start_time: Option<SystemTime>,
+    pub(crate) stop_time: Option<SystemTime>,
 }
 
 impl Session {
@@ -33,31 +43,15 @@ impl Session {
             id,
             name,
             peer_connections,
+            state: State::Created,
+            start_time: None,
+            stop_time: None,
         }
     }
 }
 
-pub(crate) type SessionStorage = HashMap<String, Session>;
-pub(crate) type PeerConnections = HashMap<String, PeerConnection>;
-
-#[tonic::async_trait]
-impl WebRtc for MyWebRtc {
-    async fn create_session(
-        &self,
-        request: Request<CreateSessionRequest>,
-    ) -> std::result::Result<Response<CreateSessionResponse>, Status> {
-        info!("{:?}", request);
-
-        let name = request.into_inner().name;
-        let session_id = add_session(name, self.sessions.clone())?;
-        let reply = webrtc::CreateSessionResponse { session_id };
-
-        Ok(Response::new(reply))
-    }
-}
-
 // Add a new session to sessions (in internal state)
-fn add_session(name: String, sessions: Arc<Mutex<SessionStorage>>) -> Result<String> {
+pub(crate) fn add_session(name: String, sessions: Arc<Mutex<SessionStorage>>) -> Result<String> {
     let session = Session::new(name);
     let session_id = session.id.clone();
 
@@ -66,6 +60,41 @@ fn add_session(name: String, sessions: Arc<Mutex<SessionStorage>>) -> Result<Str
     sessions.lock()?.insert(session_id.clone(), session);
 
     Ok(session_id)
+}
+
+pub(crate) fn start_session(
+    session_id: String,
+    sessions: Arc<Mutex<SessionStorage>>,
+) -> Result<()> {
+    info!("Starting session {}", session_id);
+
+    let mut sessions = sessions.lock()?;
+    let session = sessions.entry(session_id).and_modify(|session| {
+        session.state = State::Started;
+        session.start_time = Some(SystemTime::now());
+    });
+
+    // TODO: implement LibWebRtc here
+
+    info!("Starting session: {:?}", session);
+
+    Ok(())
+}
+
+pub(crate) fn stop_session(session_id: String, sessions: Arc<Mutex<SessionStorage>>) -> Result<()> {
+    info!("Stopping session {}", session_id);
+
+    let mut sessions = sessions.lock()?;
+    let session = sessions.entry(session_id).and_modify(|session| {
+        session.state = State::Stopped;
+        session.stop_time = Some(SystemTime::now());
+    });
+
+    // TODO: implement LibWebRtc here
+
+    info!("Stopped session: {:?}", session);
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -87,12 +116,31 @@ mod tests {
         );
     }
 
-    // TODO: add int tests, running the server in a lazy static (if possible)
-    // #[tokio::test]
-    // async fn it_creates_a_session() {
-    //     tokio::task::spawn(async {
-    //         let addr = "[::1]:50051";
-    //         serve(addr).await.unwrap();
-    //     });
-    // }
+    #[test]
+    fn it_starts_a_session() {
+        let session_storage = SessionStorage::new();
+        let sessions = Arc::new(Mutex::new(session_storage));
+        let session_id = add_session("New Session".into(), sessions.clone()).unwrap();
+        start_session(session_id.clone(), sessions.clone()).unwrap();
+
+        assert_eq!(
+            State::Started,
+            sessions.lock().unwrap().get(&session_id).unwrap().state
+        );
+    }
+
+    #[test]
+    fn it_stops_a_session() {
+        tracing_subscriber::fmt::init();
+        let session_storage = SessionStorage::new();
+        let sessions = Arc::new(Mutex::new(session_storage));
+        let session_id = add_session("New Session".into(), sessions.clone()).unwrap();
+        start_session(session_id.clone(), sessions.clone()).unwrap();
+        stop_session(session_id.clone(), sessions.clone()).unwrap();
+
+        assert_eq!(
+            State::Stopped,
+            sessions.lock().unwrap().get(&session_id).unwrap().state
+        );
+    }
 }

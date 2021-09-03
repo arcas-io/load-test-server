@@ -1,4 +1,5 @@
 mod error;
+mod handlers;
 mod server;
 mod session;
 

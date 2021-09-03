@@ -9,7 +9,7 @@ pub(crate) mod webrtc {
     tonic::include_proto!("webrtc");
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(crate) struct MyWebRtc {
     pub(crate) sessions: Arc<Mutex<SessionStorage>>,
 }
