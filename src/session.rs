@@ -1,4 +1,4 @@
-use crate::error::Result;
+use crate::error::{Result, ServerError};
 use libwebrtc::peerconnection::PeerConnection as LibWebRtcPeerConnection;
 use nanoid::nanoid;
 use std::collections::HashMap;
@@ -66,29 +66,31 @@ pub(crate) fn start_session(
     session_id: String,
     sessions: Arc<Mutex<SessionStorage>>,
 ) -> Result<()> {
-    info!("Starting session {}", session_id);
+    info!("Attempting to start session {}", session_id);
 
     let mut sessions = sessions.lock()?;
-    let session = sessions.entry(session_id).and_modify(|session| {
-        session.state = State::Started;
-        session.start_time = Some(SystemTime::now());
-    });
+    let session = sessions.get_mut(&session_id)?;
+
+    session.state = State::Started;
+    session.start_time = Some(SystemTime::now());
 
     // TODO: implement LibWebRtc here
 
-    info!("Starting session: {:?}", session);
+    info!("Started session: {:?}", session);
 
     Ok(())
 }
 
 pub(crate) fn stop_session(session_id: String, sessions: Arc<Mutex<SessionStorage>>) -> Result<()> {
-    info!("Stopping session {}", session_id);
+    info!("Attempting to stop session {}", session_id);
 
     let mut sessions = sessions.lock()?;
-    let session = sessions.entry(session_id).and_modify(|session| {
-        session.state = State::Stopped;
-        session.stop_time = Some(SystemTime::now());
-    });
+    let session = sessions
+        .get_mut(&session_id)
+        .ok_or_else(|| ServerError::InvalidSessionError(session_id))?;
+
+    session.state = State::Stopped;
+    session.stop_time = Some(SystemTime::now());
 
     // TODO: implement LibWebRtc here
 
@@ -131,7 +133,6 @@ mod tests {
 
     #[test]
     fn it_stops_a_session() {
-        tracing_subscriber::fmt::init();
         let session_storage = SessionStorage::new();
         let sessions = Arc::new(Mutex::new(session_storage));
         let session_id = add_session("New Session".into(), sessions.clone()).unwrap();

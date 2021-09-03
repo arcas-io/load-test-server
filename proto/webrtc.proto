@@ -15,8 +15,6 @@ message CreateSessionResponse { string session_id = 1; }
 
 // Start Session
 message StartSessionRequest { string session_id = 1; }
-message StartSessionResponse {}
 
 // Stop Session
 message StopSessionRequest { string session_id = 1; }
-message StopSessionResponse {}
