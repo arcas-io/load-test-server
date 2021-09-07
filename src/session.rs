@@ -9,7 +9,7 @@ use tracing::info;
 pub(crate) type SessionStorage = HashMap<String, Session>;
 pub(crate) type PeerConnections = HashMap<String, PeerConnection>;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq, strum::ToString)]
 pub(crate) enum State {
     Created,
     Started,
@@ -69,7 +69,9 @@ pub(crate) fn start_session(
     info!("Attempting to start session {}", session_id);
 
     let mut sessions = sessions.lock()?;
-    let session = sessions.get_mut(&session_id)?;
+    let session = sessions
+        .get_mut(&session_id)
+        .ok_or_else(|| ServerError::InvalidSessionError(session_id))?;
 
     session.state = State::Started;
     session.start_time = Some(SystemTime::now());

@@ -1,10 +1,13 @@
 use crate::server::{webrtc, MyWebRtc};
 use crate::session::{add_session, start_session, stop_session};
+use crate::stats::get_stats;
 use tonic::{Request, Response, Status};
 use tracing::info;
 use webrtc::web_rtc_server::WebRtc;
-use webrtc::{CreateSessionRequest, CreateSessionResponse};
-use webrtc::{Empty, StartSessionRequest, StopSessionRequest};
+use webrtc::{
+    CreateSessionRequest, CreateSessionResponse, Empty, GetStatsRequest, GetStatsResponse,
+    StartSessionRequest, StopSessionRequest,
+};
 
 #[tonic::async_trait]
 impl WebRtc for MyWebRtc {
@@ -43,6 +46,21 @@ impl WebRtc for MyWebRtc {
         let session_id = request.into_inner().session_id;
         stop_session(session_id, self.sessions.clone())?;
         let reply = webrtc::Empty {};
+
+        Ok(Response::new(reply))
+    }
+
+    async fn get_stats(
+        &self,
+        request: Request<GetStatsRequest>,
+    ) -> std::result::Result<Response<GetStatsResponse>, Status> {
+        info!("{:?}", request);
+
+        let session_id = request.into_inner().session_id;
+        let stats = get_stats(session_id, self.sessions.clone())?;
+        let reply = webrtc::GetStatsResponse {
+            session: Some(stats.session.into()),
+        };
 
         Ok(Response::new(reply))
     }

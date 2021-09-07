@@ -8,6 +8,8 @@ edition = "2018"
 libwebrtc = { path = "../webrtc", package="webrtc" }
 nanoid = "0.4.0"
 prost = "0.8"
+prost-types = "0.8" 
+strum = { version = "0.21", features = ["derive"] }
 thiserror = "1.0"
 tokio = { version = "1.0", features = ["macros", "rt-multi-thread"] }
 tonic = "0.5"

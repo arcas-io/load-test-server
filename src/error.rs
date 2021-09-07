@@ -13,6 +13,9 @@ pub enum ServerError {
     #[error("Session {0} does not exist")]
     InvalidSessionError(String),
 
+    #[error("TimeStamp {0} is invalid")]
+    InvalidTimeStampError(String),
+
     #[error("Parse error: {0}")]
     ParseError(String),
 }

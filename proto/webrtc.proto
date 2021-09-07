@@ -1,10 +1,13 @@
 syntax = "proto3";
 package webrtc;
 
+import "google/protobuf/timestamp.proto";
+
 service WebRtc {
   rpc CreateSession(CreateSessionRequest) returns (CreateSessionResponse);
   rpc StartSession(StartSessionRequest) returns (Empty);
   rpc StopSession(StopSessionRequest) returns (Empty);
+  rpc GetStats(GetStatsRequest) returns (GetStatsResponse);
 }
 
 message Empty {}
@@ -18,3 +21,16 @@ message StartSessionRequest { string session_id = 1; }
 
 // Stop Session
 message StopSessionRequest { string session_id = 1; }
+
+// Get Stats
+message GetStatsRequest { string session_id = 1; }
+message SessionStats {
+  string id = 1;
+  string name = 2;
+  uint64 num_peer_connections = 3;
+  string state = 4;
+  google.protobuf.Timestamp start_time = 5;
+  google.protobuf.Timestamp stop_time = 6;
+  optional uint64 elapsed_time = 7;
+}
+message GetStatsResponse { SessionStats session = 1; }

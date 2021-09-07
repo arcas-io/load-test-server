@@ -2,6 +2,7 @@ mod error;
 mod handlers;
 mod server;
 mod session;
+mod stats;
 
 use crate::error::Result;
 use crate::server::serve;
