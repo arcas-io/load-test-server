@@ -1,4 +1,5 @@
 use crate::error::{Result, ServerError};
+use crate::helpers::elapsed;
 use crate::stats::{get_stats, Stats};
 use libwebrtc::peerconnection::PeerConnection as LibWebRtcPeerConnection;
 use nanoid::nanoid;
@@ -94,6 +95,14 @@ impl Session {
         info!("Stats for session {}: {:?}", self.id, stats);
 
         Ok(stats)
+    }
+
+    pub(crate) fn elapsed_time(&self) -> Option<u64> {
+        match self.state {
+            State::Created => None,
+            State::Started => elapsed(self.start_time, Some(SystemTime::now())),
+            State::Stopped => elapsed(self.start_time, self.stop_time),
+        }
     }
 }
 

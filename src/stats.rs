@@ -1,8 +1,7 @@
 use crate::error::Result;
+use crate::helpers::systemtime_to_timestamp;
 use crate::session::{Session, State};
-use prost_types::Timestamp;
 use std::time::SystemTime;
-use tracing::error;
 
 #[derive(Debug)]
 pub(crate) struct SessionStats {
@@ -15,34 +14,8 @@ pub(crate) struct SessionStats {
     pub(crate) elapsed_time: Option<u64>,
 }
 
-fn elapsed(start_time: Option<SystemTime>, stop_time: Option<SystemTime>) -> Option<u64> {
-    if let (Some(start_time), Some(stop_time)) = (start_time, stop_time) {
-        return stop_time
-            .duration_since(start_time)
-            .map_err(|e| error!("{}", e.to_string()))
-            .map(|duration| duration.as_secs())
-            .ok();
-    }
-
-    None
-}
-
-fn to_timestamp(time: Option<SystemTime>) -> Option<Timestamp> {
-    if let Some(time) = time {
-        return Some(Timestamp::from(time));
-    }
-
-    None
-}
-
 impl From<&Session> for SessionStats {
     fn from(session: &Session) -> SessionStats {
-        let elapsed_time = match session.state {
-            State::Created => None,
-            State::Started => elapsed(session.start_time, Some(SystemTime::now())),
-            State::Stopped => elapsed(session.start_time, session.stop_time),
-        };
-
         SessionStats {
             id: session.id.clone(),
             name: session.name.clone(),
@@ -50,7 +23,7 @@ impl From<&Session> for SessionStats {
             state: session.state.clone(),
             start_time: session.start_time,
             stop_time: session.stop_time,
-            elapsed_time,
+            elapsed_time: session.elapsed_time(),
         }
     }
 }
@@ -62,8 +35,8 @@ impl From<SessionStats> for crate::server::webrtc::SessionStats {
             name: session.name,
             num_peer_connections: session.num_peer_connections,
             state: session.state.to_string(),
-            start_time: to_timestamp(session.start_time),
-            stop_time: to_timestamp(session.stop_time),
+            start_time: systemtime_to_timestamp(session.start_time),
+            stop_time: systemtime_to_timestamp(session.stop_time),
             elapsed_time: session.elapsed_time,
         }
     }
@@ -111,6 +84,7 @@ mod tests {
         session.stop().unwrap();
 
         let stats = get_stats(&session).unwrap();
+        println!("{:#?}", stats);
         assert_eq!(Some(2), stats.session.elapsed_time);
     }
 }

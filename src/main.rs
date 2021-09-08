@@ -1,6 +1,7 @@
 mod data;
 mod error;
 mod handlers;
+mod helpers;
 mod server;
 mod session;
 mod stats;

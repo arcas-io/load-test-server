@@ -26,3 +26,19 @@ impl Data {
         Ok(())
     }
 }
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+
+    #[test]
+    fn it_adds_a_session() {
+        let session = Session::new("New Session".into());
+        let session_id = session.id.clone();
+        let mut data = Data::new();
+        data.add_session(session).unwrap();
+        let added_session = data.sessions.get(&session_id).unwrap();
+
+        assert_eq!(session_id, added_session.id);
+    }
+}
