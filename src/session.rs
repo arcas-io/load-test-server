@@ -9,7 +9,7 @@ use tracing::info;
 pub(crate) type SessionStorage = HashMap<String, Session>;
 pub(crate) type PeerConnections = HashMap<String, PeerConnection>;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) enum State {
     Created,
     Started,
@@ -48,6 +48,44 @@ impl Session {
             stop_time: None,
         }
     }
+
+    pub(crate) fn start(&mut self) -> Result<()> {
+        info!("Attempting to start session {}", self.id);
+
+        if self.state != State::Created {
+            return Err(ServerError::InvalidStateError(
+                "Only a created session can be started".into(),
+            ));
+        }
+
+        self.state = State::Started;
+        self.start_time = Some(SystemTime::now());
+
+        // TODO: implement LibWebRtc here
+
+        info!("Started session: {:?}", self);
+
+        Ok(())
+    }
+
+    pub(crate) fn stop(&mut self) -> Result<()> {
+        info!("Attempting to stop session {}", self.id);
+
+        if self.state != State::Started {
+            return Err(ServerError::InvalidStateError(
+                "Only a started session can be stopped".into(),
+            ));
+        }
+
+        self.state = State::Stopped;
+        self.stop_time = Some(SystemTime::now());
+
+        // TODO: implement LibWebRtc here
+
+        info!("stopped session: {:?}", self);
+
+        Ok(())
+    }
 }
 
 // Add a new session to sessions (in internal state)
@@ -66,37 +104,21 @@ pub(crate) fn start_session(
     session_id: String,
     sessions: Arc<Mutex<SessionStorage>>,
 ) -> Result<()> {
-    info!("Attempting to start session {}", session_id);
-
-    let mut sessions = sessions.lock()?;
-    let session = sessions.get_mut(&session_id)?;
-
-    session.state = State::Started;
-    session.start_time = Some(SystemTime::now());
-
-    // TODO: implement LibWebRtc here
-
-    info!("Started session: {:?}", session);
-
-    Ok(())
-}
-
-pub(crate) fn stop_session(session_id: String, sessions: Arc<Mutex<SessionStorage>>) -> Result<()> {
-    info!("Attempting to stop session {}", session_id);
-
     let mut sessions = sessions.lock()?;
     let session = sessions
         .get_mut(&session_id)
         .ok_or_else(|| ServerError::InvalidSessionError(session_id))?;
 
-    session.state = State::Stopped;
-    session.stop_time = Some(SystemTime::now());
+    session.start()
+}
 
-    // TODO: implement LibWebRtc here
+pub(crate) fn stop_session(session_id: String, sessions: Arc<Mutex<SessionStorage>>) -> Result<()> {
+    let mut sessions = sessions.lock()?;
+    let session = sessions
+        .get_mut(&session_id)
+        .ok_or_else(|| ServerError::InvalidSessionError(session_id))?;
 
-    info!("Stopped session: {:?}", session);
-
-    Ok(())
+    session.stop()
 }
 
 #[cfg(test)]
