@@ -1,12 +1,11 @@
 use crate::error::{Result, ServerError};
+use crate::stats::{get_stats, Stats};
 use libwebrtc::peerconnection::PeerConnection as LibWebRtcPeerConnection;
 use nanoid::nanoid;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 use tracing::info;
 
-pub(crate) type SessionStorage = HashMap<String, Session>;
 pub(crate) type PeerConnections = HashMap<String, PeerConnection>;
 
 #[derive(Debug, Clone, PartialEq, strum::ToString)]
@@ -86,84 +85,58 @@ impl Session {
 
         Ok(())
     }
-}
 
-// Add a new session to sessions (in internal state)
-pub(crate) fn add_session(name: String, sessions: Arc<Mutex<SessionStorage>>) -> Result<String> {
-    let session = Session::new(name);
-    let session_id = session.id.clone();
+    pub(crate) fn get_stats(&self) -> Result<Stats> {
+        info!("Attempting to get stats for session {}", self.id);
 
-    info!("Added session: {:?}", session);
+        let stats = get_stats(&self)?;
 
-    sessions.lock()?.insert(session_id.clone(), session);
+        info!("Stats for session {}: {:?}", self.id, stats);
 
-    Ok(session_id)
-}
-
-pub(crate) fn start_session(
-    session_id: String,
-    sessions: Arc<Mutex<SessionStorage>>,
-) -> Result<()> {
-    let mut sessions = sessions.lock()?;
-    let session = sessions
-        .get_mut(&session_id)
-        .ok_or_else(|| ServerError::InvalidSessionError(session_id))?;
-
-    session.start()
-}
-
-pub(crate) fn stop_session(session_id: String, sessions: Arc<Mutex<SessionStorage>>) -> Result<()> {
-    let mut sessions = sessions.lock()?;
-    let session = sessions
-        .get_mut(&session_id)
-        .ok_or_else(|| ServerError::InvalidSessionError(session_id))?;
-
-    session.stop()
+        Ok(stats)
+    }
 }
 
 #[cfg(test)]
 mod tests {
 
     use super::*;
-    use crate::session::SessionStorage;
-    use std::sync::{Arc, Mutex};
+    use crate::data::Data;
 
     #[test]
     fn it_adds_a_session() {
-        let session_storage = SessionStorage::new();
-        let sessions = Arc::new(Mutex::new(session_storage));
-        let session_id = add_session("New Session".into(), sessions.clone()).unwrap();
+        let session = Session::new("New Session".into());
+        let session_id = session.id.clone();
+        let mut data = Data::new();
+        data.add_session(session).unwrap();
 
-        assert_eq!(
-            session_id,
-            sessions.lock().unwrap().get(&session_id).unwrap().id
-        );
+        assert_eq!(session_id, data.sessions.get(&session_id).unwrap().id);
     }
 
     #[test]
     fn it_starts_a_session() {
-        let session_storage = SessionStorage::new();
-        let sessions = Arc::new(Mutex::new(session_storage));
-        let session_id = add_session("New Session".into(), sessions.clone()).unwrap();
-        start_session(session_id.clone(), sessions.clone()).unwrap();
+        let session = Session::new("New Session".into());
+        let session_id = session.id.clone();
+        let mut data = Data::new();
+        data.add_session(session).unwrap();
 
-        assert_eq!(
-            State::Started,
-            sessions.lock().unwrap().get(&session_id).unwrap().state
-        );
+        let session = data.sessions.get_mut(&session_id).unwrap();
+        session.start().unwrap();
+
+        assert_eq!(State::Started, session.state);
     }
 
     #[test]
     fn it_stops_a_session() {
-        let session_storage = SessionStorage::new();
-        let sessions = Arc::new(Mutex::new(session_storage));
-        let session_id = add_session("New Session".into(), sessions.clone()).unwrap();
-        start_session(session_id.clone(), sessions.clone()).unwrap();
-        stop_session(session_id.clone(), sessions.clone()).unwrap();
+        let session = Session::new("New Session".into());
+        let session_id = session.id.clone();
+        let mut data = Data::new();
+        data.add_session(session).unwrap();
 
-        assert_eq!(
-            State::Stopped,
-            sessions.lock().unwrap().get(&session_id).unwrap().state
-        );
+        let session = data.sessions.get_mut(&session_id).unwrap();
+        session.start().unwrap();
+        session.stop().unwrap();
+
+        assert_eq!(State::Stopped, session.state);
     }
 }

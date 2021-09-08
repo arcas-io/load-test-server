@@ -1,9 +1,8 @@
-use crate::error::{Result, ServerError};
-use crate::session::{Session, SessionStorage, State};
+use crate::error::Result;
+use crate::session::{Session, State};
 use prost_types::Timestamp;
-use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
-use tracing::{error, info, trace};
+use tracing::error;
 
 #[derive(Debug)]
 pub(crate) struct SessionStats {
@@ -75,20 +74,12 @@ pub(crate) struct Stats {
     pub(crate) session: SessionStats,
 }
 
-pub(crate) fn get_stats(session_id: String, sessions: Arc<Mutex<SessionStorage>>) -> Result<Stats> {
-    trace!("Getting stats for session {}", session_id);
-
-    let sessions = sessions.lock()?;
-    let session = sessions
-        .get(&session_id.clone())
-        .ok_or_else(|| ServerError::InvalidSessionError(session_id.clone()))?;
+pub(crate) fn get_stats(session: &Session) -> Result<Stats> {
     let stats = Stats {
         session: session.into(),
     };
 
     // TODO: implement LibWebRtc here
-
-    info!("Stats for session {} {:?}", session_id, stats);
 
     Ok(stats)
 }
@@ -96,29 +87,30 @@ pub(crate) fn get_stats(session_id: String, sessions: Arc<Mutex<SessionStorage>>
 mod tests {
 
     use super::*;
-    use crate::session::{add_session, start_session, stop_session, SessionStorage};
-    use std::sync::{Arc, Mutex};
+    use crate::data::Data;
     use std::{thread, time::Duration};
 
     #[test]
     fn it_gets_stats() {
-        let session_storage = SessionStorage::new();
-        let sessions = Arc::new(Mutex::new(session_storage));
-        let session_id = add_session("New Session".into(), sessions.clone()).unwrap();
+        let session = Session::new("New Session".into());
+        let session_id = session.id.clone();
+        let mut data = Data::new();
+        data.add_session(session).unwrap();
 
-        start_session(session_id.clone(), sessions.clone()).unwrap();
+        let session = data.sessions.get_mut(&session_id).unwrap();
+        session.start().unwrap();
 
         thread::sleep(Duration::from_millis(1000));
-        let stats = get_stats(session_id.clone(), sessions.clone()).unwrap();
+        let stats = get_stats(&session).unwrap();
         assert_eq!(Some(1), stats.session.elapsed_time);
 
         thread::sleep(Duration::from_millis(1000));
-        let stats = get_stats(session_id.clone(), sessions.clone()).unwrap();
+        let stats = get_stats(&session).unwrap();
         assert_eq!(Some(2), stats.session.elapsed_time);
 
-        stop_session(session_id.clone(), sessions.clone()).unwrap();
+        session.stop().unwrap();
 
-        let stats = get_stats(session_id, sessions).unwrap();
+        let stats = get_stats(&session).unwrap();
         assert_eq!(Some(2), stats.session.elapsed_time);
     }
 }
