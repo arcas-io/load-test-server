@@ -1,10 +1,14 @@
+use crate::call_session;
+use crate::error::ServerError;
 use crate::server::{webrtc, MyWebRtc};
-use crate::session::{add_session, start_session, stop_session};
+use crate::session::Session;
 use tonic::{Request, Response, Status};
 use tracing::info;
 use webrtc::web_rtc_server::WebRtc;
-use webrtc::{CreateSessionRequest, CreateSessionResponse};
-use webrtc::{Empty, StartSessionRequest, StopSessionRequest};
+use webrtc::{
+    CreateSessionRequest, CreateSessionResponse, Empty, GetStatsRequest, GetStatsResponse,
+    StartSessionRequest, StopSessionRequest,
+};
 
 #[tonic::async_trait]
 impl WebRtc for MyWebRtc {
@@ -15,7 +19,12 @@ impl WebRtc for MyWebRtc {
         info!("{:?}", request);
 
         let name = request.into_inner().name;
-        let session_id = add_session(name, self.sessions.clone())?;
+        let session = Session::new(name);
+        let session_id = session.id.clone();
+        self.data
+            .lock()
+            .map_err(|e| ServerError::InternalError(e.to_string()))?
+            .add_session(session)?;
         let reply = webrtc::CreateSessionResponse { session_id };
 
         Ok(Response::new(reply))
@@ -28,7 +37,8 @@ impl WebRtc for MyWebRtc {
         info!("{:?}", request);
 
         let session_id = request.into_inner().session_id;
-        start_session(session_id, self.sessions.clone())?;
+        let data = self.data.clone();
+        call_session!(data, session_id, start);
         let reply = Empty {};
 
         Ok(Response::new(reply))
@@ -41,8 +51,25 @@ impl WebRtc for MyWebRtc {
         info!("{:?}", request);
 
         let session_id = request.into_inner().session_id;
-        stop_session(session_id, self.sessions.clone())?;
+        let data = self.data.clone();
+        call_session!(data, session_id, stop);
         let reply = webrtc::Empty {};
+
+        Ok(Response::new(reply))
+    }
+
+    async fn get_stats(
+        &self,
+        request: Request<GetStatsRequest>,
+    ) -> std::result::Result<Response<GetStatsResponse>, Status> {
+        info!("{:?}", request);
+
+        let session_id = request.into_inner().session_id;
+        let data = self.data.clone();
+        let stats = call_session!(data, session_id, get_stats);
+        let reply = webrtc::GetStatsResponse {
+            session: Some(stats.session.into()),
+        };
 
         Ok(Response::new(reply))
     }

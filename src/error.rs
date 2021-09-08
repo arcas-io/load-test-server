@@ -16,6 +16,9 @@ pub enum ServerError {
     #[error("{0}")]
     InvalidStateError(String),
 
+    #[error("TimeStamp {0} is invalid")]
+    InvalidTimeStampError(String),
+
     #[error("Parse error: {0}")]
     ParseError(String),
 }
