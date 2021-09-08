@@ -13,6 +13,9 @@ pub enum ServerError {
     #[error("Session {0} does not exist")]
     InvalidSessionError(String),
 
+    #[error("{0}")]
+    InvalidStateError(String),
+
     #[error("Parse error: {0}")]
     ParseError(String),
 }
