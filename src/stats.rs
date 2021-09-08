@@ -11,7 +11,7 @@ pub(crate) struct SessionStats {
     pub(crate) state: State,
     pub(crate) start_time: Option<SystemTime>,
     pub(crate) stop_time: Option<SystemTime>,
-    pub(crate) elapsed_time: Option<u64>,
+    pub(crate) elapsed_time: u64,
 }
 
 impl From<&Session> for SessionStats {
@@ -23,7 +23,7 @@ impl From<&Session> for SessionStats {
             state: session.state.clone(),
             start_time: session.start_time,
             stop_time: session.stop_time,
-            elapsed_time: session.elapsed_time(),
+            elapsed_time: session.elapsed_time().unwrap_or(0),
         }
     }
 }
@@ -75,16 +75,16 @@ mod tests {
 
         thread::sleep(Duration::from_millis(1000));
         let stats = get_stats(&session).unwrap();
-        assert_eq!(Some(1), stats.session.elapsed_time);
+        assert_eq!(1, stats.session.elapsed_time);
 
         thread::sleep(Duration::from_millis(1000));
         let stats = get_stats(&session).unwrap();
-        assert_eq!(Some(2), stats.session.elapsed_time);
+        assert_eq!(2, stats.session.elapsed_time);
 
         session.stop().unwrap();
 
         let stats = get_stats(&session).unwrap();
         println!("{:#?}", stats);
-        assert_eq!(Some(2), stats.session.elapsed_time);
+        assert_eq!(2, stats.session.elapsed_time);
     }
 }

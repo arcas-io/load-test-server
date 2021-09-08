@@ -1,5 +1,5 @@
+use crate::call_session;
 use crate::error::ServerError;
-// use crate::get_session;
 use crate::server::{webrtc, MyWebRtc};
 use crate::session::Session;
 use tonic::{Request, Response, Status};
@@ -37,13 +37,8 @@ impl WebRtc for MyWebRtc {
         info!("{:?}", request);
 
         let session_id = request.into_inner().session_id;
-        self.data
-            .lock()
-            .map_err(|e| ServerError::InternalError(e.to_string()))?
-            .sessions
-            .get_mut(&session_id)
-            .ok_or_else(|| ServerError::InvalidSessionError(session_id))?
-            .start()?;
+        let data = self.data.clone();
+        call_session!(data, session_id, start);
         let reply = Empty {};
 
         Ok(Response::new(reply))
@@ -56,13 +51,8 @@ impl WebRtc for MyWebRtc {
         info!("{:?}", request);
 
         let session_id = request.into_inner().session_id;
-        self.data
-            .lock()
-            .map_err(|e| ServerError::InternalError(e.to_string()))?
-            .sessions
-            .get_mut(&session_id)
-            .ok_or_else(|| ServerError::InvalidSessionError(session_id))?
-            .stop()?;
+        let data = self.data.clone();
+        call_session!(data, session_id, stop);
         let reply = webrtc::Empty {};
 
         Ok(Response::new(reply))
@@ -75,14 +65,8 @@ impl WebRtc for MyWebRtc {
         info!("{:?}", request);
 
         let session_id = request.into_inner().session_id;
-        let stats = self
-            .data
-            .lock()
-            .map_err(|e| ServerError::InternalError(e.to_string()))?
-            .sessions
-            .get(&session_id)
-            .ok_or_else(|| ServerError::InvalidSessionError(session_id))?
-            .get_stats()?;
+        let data = self.data.clone();
+        let stats = call_session!(data, session_id, get_stats);
         let reply = webrtc::GetStatsResponse {
             session: Some(stats.session.into()),
         };

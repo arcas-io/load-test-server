@@ -10,6 +10,7 @@ service WebRtc {
   rpc GetStats(GetStatsRequest) returns (GetStatsResponse);
 }
 
+// Reusable empty message
 message Empty {}
 
 // Create Session
@@ -31,6 +32,6 @@ message SessionStats {
   string state = 4;
   google.protobuf.Timestamp start_time = 5;
   google.protobuf.Timestamp stop_time = 6;
-  optional uint64 elapsed_time = 7;
+  uint64 elapsed_time = 7;
 }
 message GetStatsResponse { SessionStats session = 1; }

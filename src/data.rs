@@ -5,6 +5,9 @@ use tracing::info;
 
 pub(crate) type Sessions = HashMap<String, Session>;
 
+/// The in-memory persistent data structure for the server.
+///
+/// sessions: holds current and past sessions, keyed by session.id
 #[derive(Debug)]
 pub(crate) struct Data {
     pub(crate) sessions: Sessions,
@@ -26,6 +29,20 @@ impl Data {
         Ok(())
     }
 }
+
+#[macro_export]
+macro_rules! call_session {
+    ($data:ident, $session_id:ident, $fn:ident) => {
+        $data
+            .lock()
+            .map_err(|e| crate::error::ServerError::InternalError(e.to_string()))?
+            .sessions
+            .get_mut(&$session_id)
+            .ok_or_else(|| crate::error::ServerError::InvalidSessionError($session_id))?
+            .$fn()?
+    };
+}
+
 #[cfg(test)]
 mod tests {
 
