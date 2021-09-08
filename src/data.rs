@@ -26,6 +26,20 @@ impl Data {
         Ok(())
     }
 }
+
+#[macro_export]
+macro_rules! call_session {
+    ($data:ident, $session_id:ident, $fn:ident) => {
+        $data
+            .lock()
+            .map_err(|e| crate::error::ServerError::InternalError(e.to_string()))?
+            .sessions
+            .get_mut(&$session_id)
+            .ok_or_else(|| crate::error::ServerError::InvalidSessionError($session_id))?
+            .$fn()?
+    };
+}
+
 #[cfg(test)]
 mod tests {
 
