@@ -94,12 +94,28 @@ impl PeerConnection {
             )
             .map_err(|e| ServerError::CreatePeerConnectionError(e.to_string()))?;
 
-        // ChannelPeerConnectionObserver::drop_ref(holder._ptr);
+        ChannelPeerConnectionObserver::drop_ref(holder._ptr);
 
         Ok(PeerConnection {
             id: nanoid!(),
             name,
             webrtc_peer_connection,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+
+    #[tokio::test]
+    async fn it_creates_a_new_peer_connection() {
+        tracing_subscriber::fmt::init();
+        let peer_connection_factory = Arc::new(Mutex::new(PeerConnectionFactory::new().unwrap()));
+        let _peer_connection =
+            PeerConnection::new(peer_connection_factory, "New Peer Connection".into())
+                .await
+                .unwrap();
     }
 }
