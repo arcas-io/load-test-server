@@ -83,7 +83,7 @@ impl PeerConnection {
             .create_peer_connection(&observer, Self::rtc_config())
             .map_err(|e| ServerError::CreatePeerConnectionError(e.to_string()))?;
 
-        ChannelPeerConnectionObserver::drop_ref(holder._ptr);
+        // ChannelPeerConnectionObserver::drop_ref(holder._ptr);
 
         Ok(PeerConnection {
             id: nanoid!(),
