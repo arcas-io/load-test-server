@@ -1,6 +1,8 @@
 use crate::error::{Result, ServerError};
 
-use libwebrtc::peerconnection::{PeerConnection as WebRtcPeerConnection, RTCConfiguration};
+use libwebrtc::peerconnection::{
+    IceServer, PeerConnection as WebRtcPeerConnection, RTCConfiguration,
+};
 use libwebrtc::peerconnection_factory::PeerConnectionFactory;
 use libwebrtc::peerconnection_observer::{
     IceConnectionState, PeerConnectionObserver, PeerConnectionObserverTrait,
@@ -78,7 +80,7 @@ impl PeerConnection {
         let webrtc_peer_connection = peer_connection_factory
             .lock()
             .await
-            .create_peer_connection(&observer, RTCConfiguration::default())
+            .create_peer_connection(&observer, Self::rtc_config())
             .map_err(|e| ServerError::CreatePeerConnectionError(e.to_string()))?;
 
         ChannelPeerConnectionObserver::drop_ref(holder._ptr);
@@ -88,6 +90,17 @@ impl PeerConnection {
             name,
             webrtc_peer_connection,
         })
+    }
+
+    fn rtc_config() -> RTCConfiguration {
+        let mut config = RTCConfiguration::default();
+        config.ice_servers = vec![IceServer {
+            username: None,
+            password: None,
+            hostname: None,
+            urls: vec!["stun:stun.l.google.com:19302".to_string()],
+        }];
+        config
     }
 }
 
