@@ -8,6 +8,8 @@ service WebRtc {
   rpc StartSession(StartSessionRequest) returns (Empty);
   rpc StopSession(StopSessionRequest) returns (Empty);
   rpc GetStats(GetStatsRequest) returns (GetStatsResponse);
+  rpc CreatePeerConnection(CreatePeerConnectionRequest)
+      returns (CreatePeerConnectionResponse);
 }
 
 // Reusable empty message
@@ -35,3 +37,10 @@ message SessionStats {
   uint64 elapsed_time = 7;
 }
 message GetStatsResponse { SessionStats session = 1; }
+
+// Create PeerConnection
+message CreatePeerConnectionRequest {
+  string session_id = 1;
+  string name = 2;
+}
+message CreatePeerConnectionResponse { string peer_connection_id = 1; }

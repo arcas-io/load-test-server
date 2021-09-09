@@ -1,10 +1,13 @@
 use crate::error::{Result, ServerError};
 use crate::helpers::elapsed;
+use crate::peer_connection::PeerConnection;
 use crate::stats::{get_stats, Stats};
-use libwebrtc::peerconnection::PeerConnection as LibWebRtcPeerConnection;
+use libwebrtc::peerconnection_factory::PeerConnectionFactory;
 use nanoid::nanoid;
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::SystemTime;
+use tokio::sync::Mutex;
 use tracing::info;
 
 pub(crate) type PeerConnections = HashMap<String, PeerConnection>;
@@ -14,14 +17,6 @@ pub(crate) enum State {
     Created,
     Started,
     Stopped,
-}
-
-#[derive(Debug)]
-pub(crate) struct PeerConnection {
-    id: String,
-    session_id: String,
-    name: String,
-    internal_peer_connection: LibWebRtcPeerConnection,
 }
 
 #[derive(Debug)]
@@ -97,6 +92,30 @@ impl Session {
         Ok(stats)
     }
 
+    pub(crate) async fn add_peer_connection(
+        &mut self,
+        peer_connection_factory: Arc<Mutex<PeerConnectionFactory>>,
+        name: String,
+    ) -> Result<String> {
+        info!(
+            "Attempting to add a peer connection for session {}",
+            self.id
+        );
+
+        let peer_connection = PeerConnection::new(peer_connection_factory, name).await?;
+        let peer_connection_id = peer_connection.id.clone();
+
+        self.peer_connections
+            .insert(peer_connection_id.clone(), peer_connection);
+
+        info!(
+            "Added peer connection {} to session {}",
+            self.id, peer_connection_id
+        );
+
+        Ok(peer_connection_id)
+    }
+
     pub(crate) fn elapsed_time(&self) -> Option<u64> {
         match self.state {
             State::Created => None,
@@ -147,5 +166,47 @@ mod tests {
         session.stop().unwrap();
 
         assert_eq!(State::Stopped, session.state);
+    }
+
+    #[test]
+    fn it_gets_stats() {
+        let session = Session::new("New Session".into());
+        let session_id = session.id.clone();
+        let mut data = Data::new();
+        data.add_session(session).unwrap();
+
+        let session = data.sessions.get_mut(&session_id).unwrap();
+        session.start().unwrap();
+        let stats = session.get_stats();
+
+        // TODO: come up with a better assertion
+        assert!(stats.is_ok());
+    }
+
+    #[tokio::test]
+    async fn it_creates_a_peer_connection() {
+        tracing_subscriber::fmt::init();
+        let session = Session::new("New Session".into());
+        let session_id = session.id.clone();
+        let mut data = Data::new();
+        data.add_session(session).unwrap();
+
+        let session = data.sessions.get_mut(&session_id).unwrap();
+        session.start().unwrap();
+
+        let peer_connection_factory = Arc::new(Mutex::new(PeerConnectionFactory::new().unwrap()));
+        let peer_connection_id = session
+            .add_peer_connection(peer_connection_factory, "New Peer Connection".into())
+            .await
+            .unwrap();
+
+        assert_eq!(
+            session
+                .peer_connections
+                .get(&peer_connection_id)
+                .unwrap()
+                .id,
+            peer_connection_id
+        );
     }
 }

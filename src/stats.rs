@@ -77,10 +77,6 @@ mod tests {
         let stats = get_stats(&session).unwrap();
         assert_eq!(1, stats.session.elapsed_time);
 
-        thread::sleep(Duration::from_millis(1000));
-        let stats = get_stats(&session).unwrap();
-        assert_eq!(2, stats.session.elapsed_time);
-
         session.stop().unwrap();
 
         let stats = get_stats(&session).unwrap();
