@@ -7,6 +7,9 @@ pub type Result<T> = std::result::Result<T, ServerError>;
 
 #[derive(Error, Debug)]
 pub enum ServerError {
+    #[error("Could not create peer connection: {0}")]
+    CreatePeerConnectionError(String),
+
     #[error("Internal error: {0}")]
     InternalError(String),
 

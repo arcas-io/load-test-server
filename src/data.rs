@@ -30,16 +30,36 @@ impl Data {
     }
 }
 
+/// Macro to remove boilderplate in the handlers when manipulating sessions
+/// with data.
+///
+/// # Examples
+///
+/// ```
+/// // Invoking a method on session with no parameters
+/// call_session!(self.data, session_id, stop)?;
+///
+/// // Invoking an async method on session with 2 parameters
+/// let peer_connection_id = call_session!(
+///     self.data,
+///     session_id.clone(),
+///     add_peer_connection,
+///     peer_connection_factory,
+///     name
+/// )
+/// .await?;
+/// ```
+///
 #[macro_export]
 macro_rules! call_session {
-    ($data:ident, $session_id:ident, $fn:ident) => {
+    ($data:expr, $session_id:expr, $fn:ident $(, $args:expr)*) => {
         $data
             .lock()
-            .map_err(|e| crate::error::ServerError::InternalError(e.to_string()))?
+            .await
             .sessions
             .get_mut(&$session_id)
             .ok_or_else(|| crate::error::ServerError::InvalidSessionError($session_id))?
-            .$fn()?
+            .$fn($($args),*)
     };
 }
 

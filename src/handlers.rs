@@ -1,13 +1,13 @@
 use crate::call_session;
-use crate::error::ServerError;
 use crate::server::{webrtc, MyWebRtc};
 use crate::session::Session;
 use tonic::{Request, Response, Status};
 use tracing::info;
 use webrtc::web_rtc_server::WebRtc;
 use webrtc::{
-    CreateSessionRequest, CreateSessionResponse, Empty, GetStatsRequest, GetStatsResponse,
-    StartSessionRequest, StopSessionRequest,
+    CreatePeerConnectionRequest, CreatePeerConnectionResponse, CreateSessionRequest,
+    CreateSessionResponse, Empty, GetStatsRequest, GetStatsResponse, StartSessionRequest,
+    StopSessionRequest,
 };
 
 #[tonic::async_trait]
@@ -21,10 +21,7 @@ impl WebRtc for MyWebRtc {
         let name = request.into_inner().name;
         let session = Session::new(name);
         let session_id = session.id.clone();
-        self.data
-            .lock()
-            .map_err(|e| ServerError::InternalError(e.to_string()))?
-            .add_session(session)?;
+        self.data.lock().await.add_session(session)?;
         let reply = webrtc::CreateSessionResponse { session_id };
 
         Ok(Response::new(reply))
@@ -37,8 +34,7 @@ impl WebRtc for MyWebRtc {
         info!("{:?}", request);
 
         let session_id = request.into_inner().session_id;
-        let data = self.data.clone();
-        call_session!(data, session_id, start);
+        call_session!(self.data, session_id, start)?;
         let reply = Empty {};
 
         Ok(Response::new(reply))
@@ -51,8 +47,7 @@ impl WebRtc for MyWebRtc {
         info!("{:?}", request);
 
         let session_id = request.into_inner().session_id;
-        let data = self.data.clone();
-        call_session!(data, session_id, stop);
+        call_session!(self.data, session_id, stop)?;
         let reply = webrtc::Empty {};
 
         Ok(Response::new(reply))
@@ -65,11 +60,33 @@ impl WebRtc for MyWebRtc {
         info!("{:?}", request);
 
         let session_id = request.into_inner().session_id;
-        let data = self.data.clone();
-        let stats = call_session!(data, session_id, get_stats);
+        let stats = call_session!(self.data, session_id, get_stats)?;
         let reply = webrtc::GetStatsResponse {
             session: Some(stats.session.into()),
         };
+
+        Ok(Response::new(reply))
+    }
+
+    async fn create_peer_connection(
+        &self,
+        request: Request<CreatePeerConnectionRequest>,
+    ) -> std::result::Result<Response<CreatePeerConnectionResponse>, Status> {
+        info!("{:?}", request);
+
+        let request = request.into_inner();
+        let CreatePeerConnectionRequest { name, session_id } = request;
+        let peer_connection_factory = self.peer_connection_factory.clone();
+        let peer_connection_id = call_session!(
+            self.data,
+            session_id.clone(),
+            add_peer_connection,
+            peer_connection_factory,
+            name
+        )
+        .await?;
+
+        let reply = webrtc::CreatePeerConnectionResponse { peer_connection_id };
 
         Ok(Response::new(reply))
     }
