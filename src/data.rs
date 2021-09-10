@@ -5,6 +5,9 @@ use tracing::info;
 
 pub(crate) type Sessions = HashMap<String, Session>;
 
+/// The in-memory persistent data structure for the server.
+///
+/// sessions: holds current and past sessions, keyed by session.id
 #[derive(Debug)]
 pub(crate) struct Data {
     pub(crate) sessions: Sessions,
