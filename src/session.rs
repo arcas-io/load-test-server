@@ -3,12 +3,12 @@ use crate::helpers::elapsed;
 use crate::peer_connection::PeerConnection;
 use crate::stats::{get_stats, Stats};
 use libwebrtc::peerconnection_factory::PeerConnectionFactory;
+use log::info;
 use nanoid::nanoid;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::SystemTime;
 use tokio::sync::Mutex;
-use tracing::info;
 
 pub(crate) type PeerConnections = HashMap<String, PeerConnection>;
 

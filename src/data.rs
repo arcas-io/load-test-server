@@ -1,7 +1,7 @@
 use crate::error::Result;
 use crate::session::Session;
+use log::info;
 use std::collections::HashMap;
-use tracing::info;
 
 pub(crate) type Sessions = HashMap<String, Session>;
 

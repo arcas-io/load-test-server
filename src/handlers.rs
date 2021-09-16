@@ -1,8 +1,8 @@
 use crate::call_session;
 use crate::server::{webrtc, MyWebRtc};
 use crate::session::Session;
+use log::info;
 use tonic::{Request, Response, Status};
-use tracing::info;
 use webrtc::web_rtc_server::WebRtc;
 use webrtc::{
     CreatePeerConnectionRequest, CreatePeerConnectionResponse, CreateSessionRequest,

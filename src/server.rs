@@ -1,10 +1,10 @@
 use crate::data::Data;
 use crate::error::{Result, ServerError};
 use libwebrtc::peerconnection_factory::PeerConnectionFactory;
+use log::info;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tonic::transport::Server;
-use tracing::info;
 use webrtc::web_rtc_server::WebRtcServer;
 
 pub(crate) mod webrtc {
@@ -18,8 +18,6 @@ pub(crate) struct MyWebRtc {
 }
 
 pub(crate) async fn serve(addr: &str) -> Result<()> {
-    tracing_subscriber::fmt::init();
-
     let addr = addr.parse()?;
     let data = Arc::new(Mutex::new(Data::new()));
     let peer_connection_factory = PeerConnectionFactory::new()
