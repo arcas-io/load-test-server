@@ -1,5 +1,6 @@
 use crate::call_session;
-use crate::server::{webrtc, MyWebRtc};
+use crate::data::SharedState;
+use crate::server::webrtc;
 use crate::session::Session;
 use log::info;
 use tonic::{Request, Response, Status};
@@ -11,7 +12,7 @@ use webrtc::{
 };
 
 #[tonic::async_trait]
-impl WebRtc for MyWebRtc {
+impl WebRtc for SharedState {
     async fn create_session(
         &self,
         request: Request<CreateSessionRequest>,
@@ -21,7 +22,7 @@ impl WebRtc for MyWebRtc {
         let name = request.into_inner().name;
         let session = Session::new(name);
         let session_id = session.id.clone();
-        self.data.lock().await.add_session(session)?;
+        self.lock().await.data.add_session(session)?;
         let reply = webrtc::CreateSessionResponse { session_id };
 
         Ok(Response::new(reply))
@@ -34,7 +35,7 @@ impl WebRtc for MyWebRtc {
         info!("{:?}", request);
 
         let session_id = request.into_inner().session_id;
-        call_session!(self.data, session_id, start)?;
+        call_session!(self, session_id, start)?;
         let reply = Empty {};
 
         Ok(Response::new(reply))
@@ -47,7 +48,7 @@ impl WebRtc for MyWebRtc {
         info!("{:?}", request);
 
         let session_id = request.into_inner().session_id;
-        call_session!(self.data, session_id, stop)?;
+        call_session!(self, session_id, stop)?;
         let reply = webrtc::Empty {};
 
         Ok(Response::new(reply))
@@ -60,7 +61,7 @@ impl WebRtc for MyWebRtc {
         info!("{:?}", request);
 
         let session_id = request.into_inner().session_id;
-        let stats = call_session!(self.data, session_id, get_stats)?;
+        let stats = call_session!(self, session_id, get_stats)?;
         let reply = webrtc::GetStatsResponse {
             session: Some(stats.session.into()),
         };
@@ -76,9 +77,9 @@ impl WebRtc for MyWebRtc {
 
         let request = request.into_inner();
         let CreatePeerConnectionRequest { name, session_id } = request;
-        let peer_connection_factory = self.peer_connection_factory.clone();
+        let peer_connection_factory = self.lock().await.peer_connection_factory.clone();
         let peer_connection_id = call_session!(
-            self.data,
+            self,
             session_id.clone(),
             add_peer_connection,
             peer_connection_factory,

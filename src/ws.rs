@@ -23,6 +23,7 @@ use tower_http::{
 
 use serde::{Deserialize, Serialize};
 
+use crate::data::SharedState;
 use libwebrtc::errors::LibWebrtcError;
 use libwebrtc::peerconnection::{PeerConnection, RTCConfiguration};
 use libwebrtc::peerconnection_factory::PeerConnectionFactory;
@@ -301,7 +302,7 @@ async fn ws_connect_entry(
     }
 }
 
-pub(crate) async fn serve() {
+pub(crate) async fn serve(shared_state: SharedState) {
     let static_directory = "static";
 
     let peer_connection = Arc::new(Mutex::new(

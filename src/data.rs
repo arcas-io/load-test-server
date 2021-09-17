@@ -1,8 +1,18 @@
 use crate::error::Result;
 use crate::session::Session;
+use libwebrtc::peerconnection_factory::PeerConnectionFactory;
 use log::info;
 use std::collections::HashMap;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
+#[derive(Debug)]
+pub(crate) struct SharedStateInner {
+    pub(crate) data: Data,
+    pub(crate) peer_connection_factory: PeerConnectionFactory,
+}
+
+pub(crate) type SharedState = Arc<Mutex<SharedStateInner>>;
 pub(crate) type Sessions = HashMap<String, Session>;
 
 /// The in-memory persistent data structure for the server.
@@ -52,10 +62,11 @@ impl Data {
 ///
 #[macro_export]
 macro_rules! call_session {
-    ($data:expr, $session_id:expr, $fn:ident $(, $args:expr)*) => {
-        $data
+    ($shared_state:expr, $session_id:expr, $fn:ident $(, $args:expr)*) => {
+        $shared_state
             .lock()
             .await
+            .data
             .sessions
             .get_mut(&$session_id)
             .ok_or_else(|| crate::error::ServerError::InvalidSessionError($session_id))?

@@ -94,7 +94,7 @@ impl Session {
 
     pub(crate) async fn add_peer_connection(
         &mut self,
-        peer_connection_factory: Arc<Mutex<PeerConnectionFactory>>,
+        peer_connection_factory: PeerConnectionFactory,
         name: String,
     ) -> Result<String> {
         info!(
@@ -194,7 +194,7 @@ mod tests {
         let session = data.sessions.get_mut(&session_id).unwrap();
         session.start().unwrap();
 
-        let peer_connection_factory = Arc::new(Mutex::new(PeerConnectionFactory::new().unwrap()));
+        let peer_connection_factory = PeerConnectionFactory::new().unwrap();
         let peer_connection_id = session
             .add_peer_connection(peer_connection_factory, "New Peer Connection".into())
             .await

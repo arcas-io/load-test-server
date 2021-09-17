@@ -67,7 +67,7 @@ impl PeerConnectionObserverTrait for ChannelPeerConnectionObserver {
 
 impl PeerConnection {
     pub(crate) async fn new(
-        peer_connection_factory: Arc<Mutex<PeerConnectionFactory>>,
+        peer_connection_factory: PeerConnectionFactory,
         name: String,
     ) -> Result<PeerConnection> {
         let (tx, mut _rx) = tokio::sync::mpsc::channel::<String>(10);
@@ -78,8 +78,6 @@ impl PeerConnection {
             .map_err(|e| ServerError::CreatePeerConnectionError(e.to_string()))?;
 
         let webrtc_peer_connection = peer_connection_factory
-            .lock()
-            .await
             .create_peer_connection(&observer, Self::rtc_config())
             .map_err(|e| ServerError::CreatePeerConnectionError(e.to_string()))?;
 
@@ -112,7 +110,7 @@ mod tests {
     #[tokio::test]
     async fn it_creates_a_new_peer_connection() {
         tracing_subscriber::fmt::init();
-        let peer_connection_factory = Arc::new(Mutex::new(PeerConnectionFactory::new().unwrap()));
+        let peer_connection_factory = PeerConnectionFactory::new().unwrap();
         let _peer_connection =
             PeerConnection::new(peer_connection_factory, "New Peer Connection".into())
                 .await
