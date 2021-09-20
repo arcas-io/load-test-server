@@ -114,15 +114,22 @@ fn error_drop_ref<T: ToString>(
 /// Create a peer connection
 async fn create_peer_connection(
     holder: &ChannelPCObsPtr<ChannelPeerConnectionObserver>,
-    factory: &SafePeerConnectionFactory,
+    shared_state: SharedState,
     video_source: &RustTrackVideoSource,
 ) -> Result<PeerConnection, LibWebrtcError> {
     let observer = { PeerConnectionObserver::new(holder._ptr).unwrap() };
-    let factory = factory.lock().await;
-    let pc = factory.create_peer_connection(&observer, RTCConfiguration::default())?;
+    let pc = shared_state
+        .lock()
+        .await
+        .peer_connection_factory
+        .create_peer_connection(&observer, RTCConfiguration::default())?;
 
     // possible observer leak
-    factory.create_and_add_video_track(&pc, &video_source);
+    shared_state
+        .lock()
+        .await
+        .peer_connection_factory
+        .create_and_add_video_track(&pc, &video_source);
 
     Ok(pc)
 }
@@ -131,7 +138,7 @@ async fn create_peer_connection(
 async fn send_receive_offer(
     send: Arc<Mutex<SplitSink<WebSocket, Message>>>,
     recv: Arc<Mutex<SplitStream<WebSocket>>>,
-    factory: &SafePeerConnectionFactory,
+    shared_state: SharedState,
     video_source: &RustTrackVideoSource,
     video_time: u32,
     iteration: u32,
@@ -140,7 +147,7 @@ async fn send_receive_offer(
     let holder = ChannelPCObsPtr {
         _ptr: Box::into_raw(ChannelPeerConnectionObserver::new(tx.clone())),
     };
-    let mut pc = create_peer_connection(&holder, &factory, &video_source).await?;
+    let mut pc = create_peer_connection(&holder, shared_state, &video_source).await?;
 
     // create and send the offer SDP
     let offer = pc
@@ -249,7 +256,7 @@ async fn send_receive_offer(
 
 async fn handle_websocket(
     websocket: WebSocket,
-    factory: SafePeerConnectionFactory,
+    shared_state: SharedState,
     video_source: RustTrackVideoSource,
 ) -> Result<(), LibWebrtcError> {
     let delay = 3;
@@ -268,7 +275,7 @@ async fn handle_websocket(
         // all of these clones are cheap
         let send = send.clone();
         let recv = recv.clone();
-        let factory = factory.clone();
+        let shared_state = shared_state.clone();
         let video_source = video_source.clone();
 
         sleep(Duration::from_millis(100)).await;
@@ -277,7 +284,7 @@ async fn handle_websocket(
             if let Err(e) = send_receive_offer(
                 send.clone(),
                 recv.clone(),
-                &factory,
+                shared_state.clone(),
                 &video_source,
                 video_time,
                 n,
@@ -294,10 +301,10 @@ async fn handle_websocket(
 
 async fn ws_connect_entry(
     websocket: WebSocket,
-    extract::Extension(peer_connection): extract::Extension<SafePeerConnectionFactory>,
+    extract::Extension(shared_state): extract::Extension<SharedState>,
     extract::Extension(video_source): extract::Extension<RustTrackVideoSource>,
 ) {
-    if let Err(e) = handle_websocket(websocket, peer_connection, video_source).await {
+    if let Err(e) = handle_websocket(websocket, shared_state, video_source).await {
         error!("could not handle websocker: {:?}", e);
     }
 }
@@ -305,9 +312,6 @@ async fn ws_connect_entry(
 pub(crate) async fn serve(shared_state: SharedState) {
     let static_directory = "static";
 
-    let peer_connection = Arc::new(Mutex::new(
-        PeerConnectionFactory::new().expect("could not create PeerConnectionFactory"),
-    ));
     let static_file_service =
         axum::service::get(ServeDir::new(static_directory).append_index_html_on_directories(true))
             .handle_error(|error: std::io::Error| {
@@ -331,7 +335,7 @@ pub(crate) async fn serve(shared_state: SharedState) {
 
     let app = axum::routing::nest("/", static_file_service)
         .route("/ws", ws(ws_connect_entry))
-        .layer(AddExtensionLayer::new(peer_connection))
+        .layer(AddExtensionLayer::new(shared_state))
         .layer(AddExtensionLayer::new(video_source))
         .layer(
             ServiceBuilder::new()
