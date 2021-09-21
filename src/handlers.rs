@@ -77,15 +77,14 @@ impl WebRtc for SharedState {
 
         let request = request.into_inner();
         let CreatePeerConnectionRequest { name, session_id } = request;
-        let peer_connection_factory = self.lock().await.peer_connection_factory.clone();
-        let peer_connection_id = call_session!(
-            self,
-            session_id.clone(),
-            add_peer_connection,
-            peer_connection_factory,
-            name
-        )
-        .await?;
+
+        // add to the peer connection queue, the websocket will consume this
+        // queue and create the peer connection in libwebrtc
+        let peer_connection_id = nanoid::nanoid!();
+        self.lock()
+            .await
+            .peer_connection_queue
+            .push_back((peer_connection_id.clone(), name.clone()));
 
         let reply = webrtc::CreatePeerConnectionResponse { peer_connection_id };
 

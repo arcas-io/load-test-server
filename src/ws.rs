@@ -1,18 +1,13 @@
-use axum::prelude::*;
+use axum::prelude::{extract::Extension, *};
 use axum::service::ServiceExt;
 use axum::ws::{ws, Message, WebSocket};
 use futures::stream::{SplitSink, SplitStream};
 use futures::{sink::SinkExt, stream::StreamExt};
 use hyper::StatusCode;
-use log::{debug, error, info};
+use log::{error, info, trace, warn};
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tokio::sync::{
-    mpsc::{channel, Sender},
-    oneshot,
-    oneshot::error::TryRecvError,
-    Mutex,
-};
+use tokio::sync::Mutex;
 use tokio::time::{interval, sleep, Duration};
 use tower::ServiceBuilder;
 use tower_http::services::ServeDir;
@@ -24,63 +19,23 @@ use tower_http::{
 use serde::{Deserialize, Serialize};
 
 use crate::data::SharedState;
+use crate::peer_connection::{ChannelPCObsPtr, ChannelPeerConnectionObserver, PeerConnection};
+
 use libwebrtc::errors::LibWebrtcError;
-use libwebrtc::peerconnection::{PeerConnection, RTCConfiguration};
-use libwebrtc::peerconnection_factory::PeerConnectionFactory;
-use libwebrtc::peerconnection_observer::{
-    IceConnectionState, PeerConnectionObserver, PeerConnectionObserverTrait,
-};
+// use libwebrtc::peerconnection::PeerConnection;
 use libwebrtc::rust_video_track_source::RustTrackVideoSource;
 use libwebrtc::sdp::{SdpType, SessionDescription};
 use libwebrtc::stats_collector::{DummyRTCStatsCollector, RTCStatsCollectorCallback};
 
-type SafePeerConnectionFactory = Arc<Mutex<PeerConnectionFactory>>;
-
-#[derive(Clone)]
-struct ChannelPeerConnectionObserver {
-    sender: Sender<String>,
-}
-
-impl PeerConnectionObserverTrait for ChannelPeerConnectionObserver {
-    fn on_standardized_ice_connection_change(&mut self, state: IceConnectionState) {
-        info!("new ice connection state: {:?}", state);
-    }
-
-    fn on_ice_candidate(&mut self, candidate_sdp: String, sdp_mid: String, sdp_mline_index: u32) {
-        if let Err(e) = self.sender.blocking_send(candidate_sdp.clone()) {
-            error!("could not send sdp candidate: {:?}", e);
-        } else {
-            info!("on ice candidate: {:?}", candidate_sdp);
-        }
-    }
-}
-
-impl ChannelPeerConnectionObserver {
-    fn new(sender: Sender<String>) -> Box<Self> {
-        Box::new(Self { sender })
-    }
-
-    fn drop_ref(obs: *mut Self) {
-        unsafe { Box::from_raw(obs) };
-
-        // drop here
-        debug!("peerconnection observer dropped");
-    }
-}
-
-#[derive(Debug, Clone)]
-struct ChannelPCObsPtr<T: PeerConnectionObserverTrait> {
-    pub _ptr: *mut T,
-}
-
-unsafe impl<T: PeerConnectionObserverTrait> Send for ChannelPCObsPtr<T> {}
-unsafe impl<T: PeerConnectionObserverTrait> Sync for ChannelPCObsPtr<T> {}
-
 /// Incoming websocket requests
 #[derive(Deserialize, Serialize)]
-#[serde(untagged)]
+#[serde(tag = "type")]
+#[serde(rename_all = "snake_case")]
 pub enum MessageRequest {
-    Sdp { r#type: String, sdp: String },
+    Offer { sdp: String },
+    Answer { sdp: String },
+    Candidate { sdp: String },
+    CreatePeerConnection { name: String },
 }
 
 /// Outgoing websocket responses
@@ -113,64 +68,67 @@ fn error_drop_ref<T: ToString>(
 
 /// Create a peer connection
 async fn create_peer_connection(
-    holder: &ChannelPCObsPtr<ChannelPeerConnectionObserver>,
     shared_state: SharedState,
     video_source: &RustTrackVideoSource,
+    id: &String,
+    name: &String,
 ) -> Result<PeerConnection, LibWebrtcError> {
-    let observer = { PeerConnectionObserver::new(holder._ptr).unwrap() };
-    let pc = shared_state
-        .lock()
-        .await
-        .peer_connection_factory
-        .create_peer_connection(&observer, RTCConfiguration::default())?;
+    let peer_connection = PeerConnection::new(
+        &shared_state.lock().await.peer_connection_factory,
+        id.into(),
+        name.into(),
+    )
+    .await
+    .map_err(|_e| LibWebrtcError::Generic("could not create peer connection"))?;
 
     // possible observer leak
     shared_state
         .lock()
         .await
         .peer_connection_factory
-        .create_and_add_video_track(&pc, &video_source);
+        .create_and_add_video_track(&peer_connection.webrtc_peer_connection, &video_source);
 
-    Ok(pc)
+    Ok(peer_connection)
 }
 
-/// Do the heavy lifting
+/// use channels to send and receive offers, as well as candidate requests
 async fn send_receive_offer(
     send: Arc<Mutex<SplitSink<WebSocket, Message>>>,
     recv: Arc<Mutex<SplitStream<WebSocket>>>,
     shared_state: SharedState,
     video_source: &RustTrackVideoSource,
-    video_time: u32,
-    iteration: u32,
+    video_time_s: u32,
+    id: String,
+    name: String,
 ) -> Result<(), LibWebrtcError> {
-    let (tx, mut rx) = channel::<String>(10);
-    let holder = ChannelPCObsPtr {
-        _ptr: Box::into_raw(ChannelPeerConnectionObserver::new(tx.clone())),
-    };
-    let mut pc = create_peer_connection(&holder, shared_state, &video_source).await?;
+    let pc = create_peer_connection(shared_state, &video_source, &id, &name).await?;
+    let mut webrtc_peer_connection = pc.webrtc_peer_connection;
+    let holder = pc.holder;
 
-    // create and send the offer SDP
-    let offer = pc
+    // create the offer SDP
+    let offer = webrtc_peer_connection
         .create_offer()
         .map_err(|e| error_drop_ref("could not create offer", e, &holder))?;
 
     info!("sending offer");
 
+    // send the offer SDP
     send.lock()
         .await
         .send(Message::text(new_sdp("offer", &offer)?))
         .await
         .map_err(|e| error_drop_ref("could not send offer", e, &holder))?;
 
-    pc.set_local_description(offer)?;
+    webrtc_peer_connection.set_local_description(offer)?;
 
     info!("set local description");
 
     // send the candidate response
     let sender = send.clone();
+    let mut receiver = pc.receiver;
 
     tokio::spawn(async move {
-        while let Some(cand) = rx.recv().await {
+        while let Some(cand) = receiver.recv().await {
             if let Ok(sdp) = new_sdp("candidate", &cand) {
                 let msg = Message::text(sdp);
 
@@ -189,58 +147,56 @@ async fn send_receive_offer(
             .map_err(|e| error_drop_ref("could not deserialize answer", e, &holder))?;
 
         match request {
-            MessageRequest::Sdp { r#type, sdp } => {
-                info!("incoming SDP: {:?} for video {}", r#type, iteration);
+            // first, we recive an answer to our offer
+            MessageRequest::Answer { sdp } => {
+                // info!("incoming SDP: {:?} for video {}", r#type, name);
 
-                // first, we recive an answer to our offer
-                if r#type == "answer" {
-                    let sdp = SessionDescription::from_string(SdpType::Answer, sdp.clone())
-                        .map_err(|e| error_drop_ref("could not create answer sdp", e, &holder))?;
+                let sdp = SessionDescription::from_string(SdpType::Answer, sdp.clone())
+                    .map_err(|e| error_drop_ref("could not create answer sdp", e, &holder))?;
 
-                    pc.set_remote_description(sdp).map_err(|e| {
-                        error_drop_ref("could not set remote description", e, &holder)
-                    })?;
+                webrtc_peer_connection
+                    .set_remote_description(sdp)
+                    .map_err(|e| error_drop_ref("could not set remote description", e, &holder))?;
 
-                    info!("set remote description for video {}", iteration);
+                info!("set remote description for video {}", name);
+            }
+            // next, we receive a candidate request
+            MessageRequest::Candidate { sdp } => {
+                info!("received candidate for video {}: {}", &name, &sdp);
+                webrtc_peer_connection.add_ice_candidate_from_sdp(sdp)?;
 
-                    // break;
-                };
-
-                // next, we receive a candidate request
-                if r#type == "candidate" {
-                    info!("received candidate for video {}: {}", iteration, &sdp);
-                    pc.add_ice_candidate_from_sdp(sdp)?;
-
-                    // end listening for messages, we're done
-                    break;
-                }
+                // end listening for messages, we're done
+                break;
+            }
+            _ => {
+                error!("invalid message")
             }
         }
     }
 
-    // Stats task
-    let mut pc_stats = pc.clone();
-    let (_close_tx, mut close_rx) = oneshot::channel::<()>();
+    // // Stats task
+    // let mut pc_stats = webrtc_peer_connection.clone();
+    // let (_close_tx, mut close_rx) = oneshot::channel::<()>();
 
-    tokio::spawn(async move {
-        let stats: RTCStatsCollectorCallback = DummyRTCStatsCollector {}.into();
-        let mut interval = interval(Duration::from_secs(1));
-        interval.tick().await;
+    // tokio::spawn(async move {
+    //     let stats: RTCStatsCollectorCallback = DummyRTCStatsCollector {}.into();
+    //     let mut interval = interval(Duration::from_secs(1));
+    //     interval.tick().await;
 
-        loop {
-            info!("collecting stats for video {}", iteration);
-            match close_rx.try_recv() {
-                Err(TryRecvError::Closed) | Ok(()) => return,
-                Err(TryRecvError::Empty) => {}
-            };
-            let _ = pc_stats.get_stats(&stats);
-            interval.tick().await;
-        }
-    });
+    //     loop {
+    //         trace!("collecting stats for video {}", name);
+    //         match close_rx.try_recv() {
+    //             Err(TryRecvError::Closed) | Ok(()) => return,
+    //             Err(TryRecvError::Empty) => {}
+    //         };
+    //         let _ = pc_stats.get_stats(&stats);
+    //         interval.tick().await;
+    //     }
+    // });
 
     // pause in each thread to let the video stream
     // TODO: implement something better (channels?)
-    sleep(Duration::from_secs(video_time.into())).await;
+    sleep(Duration::from_secs(video_time_s.into())).await;
 
     // drop the reference
     ChannelPeerConnectionObserver::drop_ref(holder._ptr);
@@ -259,68 +215,71 @@ async fn handle_websocket(
     shared_state: SharedState,
     video_source: RustTrackVideoSource,
 ) -> Result<(), LibWebrtcError> {
-    let delay = 3;
-    let video_time = 60;
-
-    log::info!("sending all offers in {} seconds", delay);
-    log::info!("video will play for {} seconds", video_time);
-
-    sleep(Duration::from_secs(delay)).await;
+    let video_time_s = 180;
+    let poll_websocket_ms = 200;
 
     let (send, recv) = websocket.split();
     let send = Arc::new(Mutex::new(send));
     let recv = Arc::new(Mutex::new(recv));
 
-    for n in 1..=18 {
-        // all of these clones are cheap
-        let send = send.clone();
-        let recv = recv.clone();
-        let shared_state = shared_state.clone();
-        let video_source = video_source.clone();
-
-        sleep(Duration::from_millis(100)).await;
-
-        tokio::spawn(async move {
-            if let Err(e) = send_receive_offer(
-                send.clone(),
-                recv.clone(),
-                shared_state.clone(),
-                &video_source,
-                video_time,
-                n,
-            )
+    // establish an initial connection with the browser, and spawn
+    loop {
+        // check the peer connection queue for a new connection
+        let peer_connection = shared_state
+            .clone()
+            .lock()
             .await
-            {
-                error!("error sending and receiving an offer: {:?}", e);
-            }
-        });
+            .peer_connection_queue
+            .pop_front();
+
+        // if there is a new peer connection, perform the sdp handshake on a
+        // separate thread to avoid blocking the main thread
+        if let Some((id, name)) = peer_connection {
+            let send = send.clone();
+            let recv = recv.clone();
+            let shared_state = shared_state.clone();
+            let video_source = video_source.clone();
+
+            info!("new peer connection: id={}, name={}", &id, &name);
+
+            tokio::spawn(async move {
+                let offer = send_receive_offer(
+                    send,
+                    recv,
+                    shared_state,
+                    &video_source,
+                    video_time_s,
+                    id,
+                    name,
+                );
+
+                if let Err(e) = offer.await {
+                    error!("error sending and receiving an offer & candidate: {:?}", e);
+                }
+            });
+        }
+
+        sleep(Duration::from_millis(poll_websocket_ms)).await;
+
+        // TODO: listen for ws disconnection and break out of loop
     }
 
     Ok(())
 }
 
+// main websocket entry point
 async fn ws_connect_entry(
     websocket: WebSocket,
-    extract::Extension(shared_state): extract::Extension<SharedState>,
-    extract::Extension(video_source): extract::Extension<RustTrackVideoSource>,
+    Extension(shared_state): Extension<SharedState>,
+    Extension(video_source): Extension<RustTrackVideoSource>,
 ) {
     if let Err(e) = handle_websocket(websocket, shared_state, video_source).await {
         error!("could not handle websocker: {:?}", e);
     }
 }
 
-pub(crate) async fn serve(shared_state: SharedState) {
-    let static_directory = "static";
-
-    let static_file_service =
-        axum::service::get(ServeDir::new(static_directory).append_index_html_on_directories(true))
-            .handle_error(|error: std::io::Error| {
-                Ok::<_, std::convert::Infallible>((
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    format!("Unhandled internal error: {}", error),
-                ))
-            });
-
+// stream a pre-encoded file from gstreamer to avoid encoding overhead
+fn file_video_source() -> RustTrackVideoSource {
     let video_source = RustTrackVideoSource::default();
     let (width, height) = (720, 480);
     video_source.start_gstreamer_thread_launch(
@@ -332,6 +291,25 @@ pub(crate) async fn serve(shared_state: SharedState) {
         width,
         height,
     );
+
+    video_source
+}
+
+// starts the server
+pub(crate) async fn serve(shared_state: SharedState) {
+    let video_source = file_video_source();
+    let static_directory = "static";
+    let static_file_service =
+        axum::service::get(ServeDir::new(static_directory).append_index_html_on_directories(true))
+            .handle_error(|error: std::io::Error| {
+                Ok::<_, std::convert::Infallible>((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!(
+                        "Unhandled internal error creating static file service: {}",
+                        error
+                    ),
+                ))
+            });
 
     let app = axum::routing::nest("/", static_file_service)
         .route("/ws", ws(ws_connect_entry))

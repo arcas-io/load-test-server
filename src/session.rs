@@ -6,9 +6,7 @@ use libwebrtc::peerconnection_factory::PeerConnectionFactory;
 use log::info;
 use nanoid::nanoid;
 use std::collections::HashMap;
-use std::sync::Arc;
 use std::time::SystemTime;
-use tokio::sync::Mutex;
 
 pub(crate) type PeerConnections = HashMap<String, PeerConnection>;
 
@@ -95,6 +93,7 @@ impl Session {
     pub(crate) async fn add_peer_connection(
         &mut self,
         peer_connection_factory: PeerConnectionFactory,
+        id: String,
         name: String,
     ) -> Result<String> {
         info!(
@@ -102,7 +101,7 @@ impl Session {
             self.id
         );
 
-        let peer_connection = PeerConnection::new(peer_connection_factory, name).await?;
+        let peer_connection = PeerConnection::new(&peer_connection_factory, id, name).await?;
         let peer_connection_id = peer_connection.id.clone();
 
         self.peer_connections
@@ -196,7 +195,11 @@ mod tests {
 
         let peer_connection_factory = PeerConnectionFactory::new().unwrap();
         let peer_connection_id = session
-            .add_peer_connection(peer_connection_factory, "New Peer Connection".into())
+            .add_peer_connection(
+                peer_connection_factory,
+                nanoid!(),
+                "New Peer Connection".into(),
+            )
             .await
             .unwrap();
 

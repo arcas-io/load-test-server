@@ -2,6 +2,7 @@ use prost_types::Timestamp;
 use std::time::SystemTime;
 use tracing::error;
 
+// calculate elapsed time
 pub(crate) fn elapsed(
     start_time: Option<SystemTime>,
     stop_time: Option<SystemTime>,
@@ -17,6 +18,7 @@ pub(crate) fn elapsed(
     None
 }
 
+// convert system time to timestamp
 pub(crate) fn systemtime_to_timestamp(time: Option<SystemTime>) -> Option<Timestamp> {
     time.and_then(|time| Some(Timestamp::from(time)))
 }

@@ -8,11 +8,12 @@ mod session;
 mod stats;
 mod ws;
 
-use crate::data::{Data, SharedState, SharedStateInner};
+use crate::data::{Data, SharedStateInner};
 use crate::error::Result;
 use crate::error::ServerError;
 use crate::server::serve;
 use libwebrtc::peerconnection_factory::PeerConnectionFactory;
+use std::collections::VecDeque;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -25,6 +26,7 @@ async fn main() -> Result<()> {
     let shared_state = Arc::new(Mutex::new(SharedStateInner {
         data: Data::new(),
         peer_connection_factory,
+        peer_connection_queue: VecDeque::new(),
     }));
 
     // run the ws server in a separate thread

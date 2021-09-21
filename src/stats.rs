@@ -1,3 +1,5 @@
+use libwebrtc::stats_collector::{DummyRTCStatsCollector, RTCStatsCollectorCallback};
+
 use crate::error::Result;
 use crate::helpers::systemtime_to_timestamp;
 use crate::session::{Session, State};
@@ -48,11 +50,17 @@ pub(crate) struct Stats {
 }
 
 pub(crate) fn get_stats(session: &Session) -> Result<Stats> {
+    let cb: RTCStatsCollectorCallback = DummyRTCStatsCollector {}.into();
+
     let stats = Stats {
         session: session.into(),
     };
 
-    // TODO: implement LibWebRtc here
+    for (key, peer_connection) in session.peer_connections.iter() {
+        let mut pc_stats = peer_connection.webrtc_peer_connection.clone();
+        let stats = pc_stats.get_stats(&cb).unwrap();
+        log::info!("key: {} val: {:?}", key, peer_connection);
+    }
 
     Ok(stats)
 }

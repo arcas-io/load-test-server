@@ -17,12 +17,12 @@ grpcurl -plaintext -import-path ./proto -proto webrtc.proto -d '{"name": "First 
 After creating a session:
 
 ```shell
-grpcurl -plaintext -import-path ./proto -proto webrtc.proto -d '{"sessionId": "a2x9RSxNvV6huHvvFLp62"}' [::]:50051 webrtc.WebRtc/StartSession
+grpcurl -plaintext -import-path ./proto -proto webrtc.proto -d '{"sessionId": "9s-KsEPQkO_IgfINBV4x6"}' [::]:50051 webrtc.WebRtc/StartSession
 ```
 
 ### Stopping a Session
 After creating and starting a session:
 
 ```shell
-grpcurl -plaintext -import-path ./proto -proto webrtc.proto -d '{"sessionId": "a2x9RSxNvV6huHvvFLp62"}' [::]:50051 webrtc.WebRtc/StopSession
+grpcurl -plaintext -import-path ./proto -proto webrtc.proto -d '{"sessionId": "9s-KsEPQkO_IgfINBV4x6"}' [::]:50051 webrtc.WebRtc/StopSession
 ```

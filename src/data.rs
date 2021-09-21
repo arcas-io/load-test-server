@@ -2,7 +2,7 @@ use crate::error::Result;
 use crate::session::Session;
 use libwebrtc::peerconnection_factory::PeerConnectionFactory;
 use log::info;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -10,6 +10,7 @@ use tokio::sync::Mutex;
 pub(crate) struct SharedStateInner {
     pub(crate) data: Data,
     pub(crate) peer_connection_factory: PeerConnectionFactory,
+    pub(crate) peer_connection_queue: VecDeque<(String, String)>,
 }
 
 pub(crate) type SharedState = Arc<Mutex<SharedStateInner>>;
