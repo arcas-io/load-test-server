@@ -1,6 +1,7 @@
 use crate::error::{Result, ServerError};
 
 use core::fmt;
+use libwebrtc::ffi::stats_collector::Rs_VideoSenderStats;
 use libwebrtc::peerconnection::{
     IceServer, PeerConnection as WebRtcPeerConnection, RTCConfiguration,
 };
@@ -8,6 +9,10 @@ use libwebrtc::peerconnection_factory::PeerConnectionFactory;
 use libwebrtc::peerconnection_observer::{
     IceConnectionState, PeerConnectionObserver, PeerConnectionObserverTrait,
 };
+use libwebrtc::stats_collector::{DummyRTCStatsCollector, RTCStatsCollectorCallback};
+use std::collections::VecDeque;
+use std::sync::mpsc::channel;
+use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc::{Receiver, Sender};
 use tracing::{debug, info, warn};
 
@@ -24,6 +29,15 @@ impl fmt::Debug for PeerConnection {
         write!(f, "id={}, name={}", self.id, self.name)
     }
 }
+
+#[derive(Debug)]
+pub(crate) struct PeerConnectionQueueInner {
+    pub(crate) id: String,
+    pub(crate) session_id: String,
+    pub(crate) name: String,
+}
+
+pub(crate) type PeerConnectionQueue = VecDeque<PeerConnectionQueueInner>;
 
 #[allow(dead_code)]
 pub(crate) struct ChannelPCObsPtr<T: PeerConnectionObserverTrait> {
@@ -87,8 +101,6 @@ impl PeerConnection {
             .create_peer_connection(&observer, Self::rtc_config())
             .map_err(|e| ServerError::CreatePeerConnectionError(e.to_string()))?;
 
-        // ChannelPeerConnectionObserver::drop_ref(holder._ptr);
-
         Ok(PeerConnection {
             id,
             name,
@@ -107,6 +119,16 @@ impl PeerConnection {
             urls: vec!["stun:stun.l.google.com:19302".to_string()],
         }];
         config
+    }
+
+    pub(crate) fn get_stats(&self) -> Vec<Rs_VideoSenderStats> {
+        let (sender, receiver) = channel();
+        let sender = Arc::new(Mutex::new(sender));
+        let stats_collector = DummyRTCStatsCollector::new(sender);
+        let stats_callback: RTCStatsCollectorCallback = stats_collector.into();
+        let _ = self.webrtc_peer_connection.get_stats(&stats_callback);
+        let stats = receiver.recv().unwrap();
+        stats
     }
 }
 

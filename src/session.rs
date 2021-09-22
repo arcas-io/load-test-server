@@ -1,11 +1,11 @@
 use crate::error::{Result, ServerError};
 use crate::helpers::elapsed;
-use crate::peer_connection::PeerConnection;
+use crate::peer_connection::{PeerConnection, PeerConnectionQueue, PeerConnectionQueueInner};
 use crate::stats::{get_stats, Stats};
 use libwebrtc::peerconnection_factory::PeerConnectionFactory;
 use log::info;
 use nanoid::nanoid;
-use std::collections::HashMap;
+use std::collections::{hash_map::Entry, HashMap, VecDeque};
 use std::time::SystemTime;
 
 pub(crate) type PeerConnections = HashMap<String, PeerConnection>;
@@ -22,6 +22,7 @@ pub(crate) struct Session {
     pub(crate) id: String,
     pub(crate) name: String,
     pub(crate) peer_connections: PeerConnections,
+    pub(crate) peer_connection_queue: PeerConnectionQueue,
     pub(crate) state: State,
     pub(crate) start_time: Option<SystemTime>,
     pub(crate) stop_time: Option<SystemTime>,
@@ -31,11 +32,13 @@ impl Session {
     pub(crate) fn new(name: String) -> Self {
         let id = nanoid!();
         let peer_connections: PeerConnections = HashMap::new();
+        let peer_connection_queue: PeerConnectionQueue = VecDeque::new();
 
         Self {
             id,
             name,
             peer_connections,
+            peer_connection_queue,
             state: State::Created,
             start_time: None,
             stop_time: None,
@@ -80,10 +83,10 @@ impl Session {
         Ok(())
     }
 
-    pub(crate) fn get_stats(&self) -> Result<Stats> {
+    pub(crate) async fn get_stats(&mut self) -> Result<Stats> {
         info!("Attempting to get stats for session {}", self.id);
 
-        let stats = get_stats(&self)?;
+        let stats = get_stats(self).await?;
 
         info!("Stats for session {}: {:?}", self.id, stats);
 
@@ -92,16 +95,8 @@ impl Session {
 
     pub(crate) async fn add_peer_connection(
         &mut self,
-        peer_connection_factory: PeerConnectionFactory,
-        id: String,
-        name: String,
-    ) -> Result<String> {
-        info!(
-            "Attempting to add a peer connection for session {}",
-            self.id
-        );
-
-        let peer_connection = PeerConnection::new(&peer_connection_factory, id, name).await?;
+        peer_connection: PeerConnection,
+    ) -> Result<()> {
         let peer_connection_id = peer_connection.id.clone();
 
         self.peer_connections
@@ -109,10 +104,10 @@ impl Session {
 
         info!(
             "Added peer connection {} to session {}",
-            self.id, peer_connection_id
+            &peer_connection_id, &self.id
         );
 
-        Ok(peer_connection_id)
+        Ok(())
     }
 
     pub(crate) fn elapsed_time(&self) -> Option<u64> {
@@ -122,6 +117,40 @@ impl Session {
             State::Stopped => elapsed(self.start_time, self.stop_time),
         }
     }
+}
+
+/// Macro to remove boilderplate in the handlers when manipulating sessions
+/// with data.
+///
+/// # Examples
+///
+/// ```
+/// // Invoking a method on session with no parameters
+/// call_session!(self.data, session_id, stop)?;
+///
+/// // Invoking an async method on session with 2 parameters
+/// let peer_connection_id = call_session!(
+///     self,
+///     session_id.clone(),
+///     add_peer_connection,
+///     peer_connection_factory,
+///     name
+/// )
+/// .await?;
+/// ```
+///
+#[macro_export]
+macro_rules! call_session {
+    ($shared_state:expr, $session_id:expr, $fn:ident $(, $args:expr)*) => {
+        $shared_state
+            .lock()
+            .await
+            .data
+            .sessions
+            .get_mut(&$session_id)
+            .ok_or_else(|| crate::error::ServerError::InvalidSessionError($session_id))?
+            .$fn($($args),*)
+    };
 }
 
 #[cfg(test)]
@@ -167,8 +196,8 @@ mod tests {
         assert_eq!(State::Stopped, session.state);
     }
 
-    #[test]
-    fn it_gets_stats() {
+    #[tokio::test]
+    async fn it_gets_stats() {
         let session = Session::new("New Session".into());
         let session_id = session.id.clone();
         let mut data = Data::new();
@@ -176,7 +205,7 @@ mod tests {
 
         let session = data.sessions.get_mut(&session_id).unwrap();
         session.start().unwrap();
-        let stats = session.get_stats();
+        let stats = session.get_stats().await;
 
         // TODO: come up with a better assertion
         assert!(stats.is_ok());
@@ -194,14 +223,15 @@ mod tests {
         session.start().unwrap();
 
         let peer_connection_factory = PeerConnectionFactory::new().unwrap();
-        let peer_connection_id = session
-            .add_peer_connection(
-                peer_connection_factory,
-                nanoid!(),
-                "New Peer Connection".into(),
-            )
-            .await
-            .unwrap();
+        let peer_connection_id = nanoid!();
+        let peer_connection = PeerConnection::new(
+            &peer_connection_factory,
+            peer_connection_id.clone(),
+            "New Peer Connection".into(),
+        )
+        .await
+        .unwrap();
+        session.add_peer_connection(peer_connection).await.unwrap();
 
         assert_eq!(
             session

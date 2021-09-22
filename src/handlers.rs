@@ -1,5 +1,6 @@
 use crate::call_session;
 use crate::data::SharedState;
+use crate::peer_connection::PeerConnectionQueueInner;
 use crate::server::webrtc;
 use crate::session::Session;
 use log::info;
@@ -61,9 +62,14 @@ impl WebRtc for SharedState {
         info!("{:?}", request);
 
         let session_id = request.into_inner().session_id;
-        let stats = call_session!(self, session_id, get_stats)?;
+        let stats = call_session!(self, session_id, get_stats).await?;
         let reply = webrtc::GetStatsResponse {
             session: Some(stats.session.into()),
+            peer_connections: stats
+                .peer_connections
+                .into_iter()
+                .map(|peer_connection_stats| peer_connection_stats.into())
+                .collect(),
         };
 
         Ok(Response::new(reply))
@@ -81,10 +87,12 @@ impl WebRtc for SharedState {
         // add to the peer connection queue, the websocket will consume this
         // queue and create the peer connection in libwebrtc
         let peer_connection_id = nanoid::nanoid!();
-        self.lock()
-            .await
-            .peer_connection_queue
-            .push_back((peer_connection_id.clone(), name.clone()));
+        let inner = PeerConnectionQueueInner {
+            id: peer_connection_id.clone(),
+            session_id,
+            name,
+        };
+        self.lock().await.peer_connection_queue.push_back(inner);
 
         let reply = webrtc::CreatePeerConnectionResponse { peer_connection_id };
 

@@ -1,4 +1,5 @@
 use crate::error::Result;
+use crate::peer_connection::PeerConnectionQueue;
 use crate::session::Session;
 use libwebrtc::peerconnection_factory::PeerConnectionFactory;
 use log::info;
@@ -10,7 +11,7 @@ use tokio::sync::Mutex;
 pub(crate) struct SharedStateInner {
     pub(crate) data: Data,
     pub(crate) peer_connection_factory: PeerConnectionFactory,
-    pub(crate) peer_connection_queue: VecDeque<(String, String)>,
+    pub(crate) peer_connection_queue: PeerConnectionQueue,
 }
 
 pub(crate) type SharedState = Arc<Mutex<SharedStateInner>>;
@@ -39,40 +40,6 @@ impl Data {
 
         Ok(())
     }
-}
-
-/// Macro to remove boilderplate in the handlers when manipulating sessions
-/// with data.
-///
-/// # Examples
-///
-/// ```
-/// // Invoking a method on session with no parameters
-/// call_session!(self.data, session_id, stop)?;
-///
-/// // Invoking an async method on session with 2 parameters
-/// let peer_connection_id = call_session!(
-///     self.data,
-///     session_id.clone(),
-///     add_peer_connection,
-///     peer_connection_factory,
-///     name
-/// )
-/// .await?;
-/// ```
-///
-#[macro_export]
-macro_rules! call_session {
-    ($shared_state:expr, $session_id:expr, $fn:ident $(, $args:expr)*) => {
-        $shared_state
-            .lock()
-            .await
-            .data
-            .sessions
-            .get_mut(&$session_id)
-            .ok_or_else(|| crate::error::ServerError::InvalidSessionError($session_id))?
-            .$fn($($args),*)
-    };
 }
 
 #[cfg(test)]

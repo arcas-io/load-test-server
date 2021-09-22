@@ -3,6 +3,8 @@ use libwebrtc::stats_collector::{DummyRTCStatsCollector, RTCStatsCollectorCallba
 use crate::error::Result;
 use crate::helpers::systemtime_to_timestamp;
 use crate::session::{Session, State};
+use libwebrtc::ffi::stats_collector::Rs_VideoSenderStats;
+use log::{info, warn};
 use std::time::SystemTime;
 
 #[derive(Debug)]
@@ -16,8 +18,8 @@ pub(crate) struct SessionStats {
     pub(crate) elapsed_time: u64,
 }
 
-impl From<&Session> for SessionStats {
-    fn from(session: &Session) -> SessionStats {
+impl From<&mut Session> for SessionStats {
+    fn from(session: &mut Session) -> SessionStats {
         SessionStats {
             id: session.id.clone(),
             name: session.name.clone(),
@@ -45,22 +47,90 @@ impl From<SessionStats> for crate::server::webrtc::SessionStats {
 }
 
 #[derive(Debug)]
-pub(crate) struct Stats {
-    pub(crate) session: SessionStats,
+pub(crate) struct PeerConnectionStats {
+    pub(crate) id: String,
+    pub(crate) name: String,
+    pub(crate) video_sender: Vec<Rs_VideoSenderStats>,
 }
 
-pub(crate) fn get_stats(session: &Session) -> Result<Stats> {
-    let cb: RTCStatsCollectorCallback = DummyRTCStatsCollector {}.into();
+impl From<PeerConnectionStats> for crate::server::webrtc::PeerConnectionStats {
+    fn from(
+        peer_connection_stats: PeerConnectionStats,
+    ) -> crate::server::webrtc::PeerConnectionStats {
+        crate::server::webrtc::PeerConnectionStats {
+            id: peer_connection_stats.id.clone(),
+            name: peer_connection_stats.name.clone(),
+            video_sender: peer_connection_stats
+                .video_sender
+                .into_iter()
+                .map(|stats| stats.into())
+                .collect(),
+        }
+    }
+}
+
+impl From<Rs_VideoSenderStats> for crate::server::webrtc::PeerConnectionStat {
+    fn from(video_sender_stats: Rs_VideoSenderStats) -> crate::server::webrtc::PeerConnectionStat {
+        crate::server::webrtc::PeerConnectionStat {
+            ssrc: video_sender_stats.ssrc,
+            packets_sent: video_sender_stats.packets_sent,
+            bytes_sent: video_sender_stats.bytes_sent,
+            frames_encoded: video_sender_stats.frames_encoded,
+            key_frames_encoded: video_sender_stats.key_frames_encoded,
+            total_encode_time: video_sender_stats.total_encode_time,
+            frame_width: video_sender_stats.frame_width,
+            frame_height: video_sender_stats.frame_height,
+            retransmitted_packets_sent: video_sender_stats.retransmitted_packets_sent,
+            retransmitted_bytes_sent: video_sender_stats.retransmitted_bytes_sent,
+            total_packet_send_delay: video_sender_stats.total_packet_send_delay,
+            nack_count: video_sender_stats.nack_count,
+            fir_count: video_sender_stats.fir_count,
+            pli_count: video_sender_stats.pli_count,
+            quality_limitation_reason: video_sender_stats.quality_limitation_reason,
+            quality_limitation_resolution_changes: video_sender_stats
+                .quality_limitation_resolution_changes,
+            remote_packets_lost: video_sender_stats.remote_packets_lost,
+            remote_jitter: video_sender_stats.remote_jitter,
+            remote_round_trip_time: video_sender_stats.remote_round_trip_time,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct Stats {
+    pub(crate) session: SessionStats,
+    pub(crate) peer_connections: Vec<PeerConnectionStats>,
+}
+
+pub(crate) async fn get_stats(session: &mut Session) -> Result<Stats> {
+    let keys: Vec<String> = session.peer_connections.keys().cloned().collect();
+    let mut peer_connections = vec![];
+
+    for peer_connection_id in keys {
+        // take the peer connection out of the hashmap so that stats can be
+        // pulled out of it (cannot just use a reference)
+        let peer_connection = session
+            .peer_connections
+            .remove(&peer_connection_id)
+            .unwrap();
+
+        // get the peer connection's stats
+        let video_sender = peer_connection.get_stats();
+        let peer_connection_stats = PeerConnectionStats {
+            id: peer_connection.id.clone(),
+            name: peer_connection.name.clone(),
+            video_sender,
+        };
+        peer_connections.push(peer_connection_stats);
+
+        // put the peer connection back into the hashmap
+        session.add_peer_connection(peer_connection).await.unwrap();
+    }
 
     let stats = Stats {
         session: session.into(),
+        peer_connections,
     };
-
-    for (key, peer_connection) in session.peer_connections.iter() {
-        let mut pc_stats = peer_connection.webrtc_peer_connection.clone();
-        let stats = pc_stats.get_stats(&cb).unwrap();
-        log::info!("key: {} val: {:?}", key, peer_connection);
-    }
 
     Ok(stats)
 }

@@ -36,7 +36,36 @@ message SessionStats {
   google.protobuf.Timestamp stop_time = 6;
   uint64 elapsed_time = 7;
 }
-message GetStatsResponse { SessionStats session = 1; }
+message PeerConnectionStat {
+  uint32 ssrc = 1;
+  uint32 packets_sent = 2;
+  uint64 bytes_sent = 3;
+  uint32 frames_encoded = 4;
+  uint32 key_frames_encoded = 5;
+  double total_encode_time = 6;
+  uint32 frame_width = 7;
+  uint32 frame_height = 8;
+  uint64 retransmitted_packets_sent = 9;
+  uint64 retransmitted_bytes_sent = 10;
+  double total_packet_send_delay = 11;
+  uint32 nack_count = 12;
+  uint32 fir_count = 13;
+  uint32 pli_count = 14;
+  uint32 quality_limitation_reason = 15;
+  uint32 quality_limitation_resolution_changes = 16;
+  int32 remote_packets_lost = 17;
+  double remote_jitter = 18;
+  double remote_round_trip_time = 19;
+}
+message PeerConnectionStats {
+  string id = 1;
+  string name = 2;
+  repeated PeerConnectionStat video_sender = 3;
+}
+message GetStatsResponse {
+  SessionStats session = 1;
+  repeated PeerConnectionStats peer_connections = 2;
+}
 
 // Create PeerConnection
 message CreatePeerConnectionRequest {
