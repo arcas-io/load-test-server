@@ -4,12 +4,11 @@ use axum::ws::{ws, Message, WebSocket};
 use futures::stream::{SplitSink, SplitStream};
 use futures::{sink::SinkExt, stream::StreamExt};
 use hyper::StatusCode;
-use log::{error, info, trace, warn};
+use log::{error, info};
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tokio::sync::oneshot::error::TryRecvError;
-use tokio::sync::{oneshot, Mutex};
-use tokio::time::{interval, sleep, Duration};
+use tokio::sync::Mutex;
+use tokio::time::{sleep, Duration};
 use tower::ServiceBuilder;
 use tower_http::services::ServeDir;
 use tower_http::{
@@ -19,17 +18,14 @@ use tower_http::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::call_session;
 use crate::data::SharedState;
 use crate::peer_connection::{
-    self, ChannelPCObsPtr, ChannelPeerConnectionObserver, PeerConnection, PeerConnectionQueueInner,
+    ChannelPCObsPtr, ChannelPeerConnectionObserver, PeerConnection, PeerConnectionQueueInner,
 };
 
 use libwebrtc::errors::LibWebrtcError;
-use libwebrtc::peerconnection::PeerConnection as LibWebRtcPeerConnection;
 use libwebrtc::rust_video_track_source::RustTrackVideoSource;
 use libwebrtc::sdp::{SdpType, SessionDescription};
-use libwebrtc::stats_collector::{DummyRTCStatsCollector, RTCStatsCollectorCallback};
 
 /// Incoming websocket requests
 #[derive(Deserialize, Serialize)]
@@ -78,34 +74,10 @@ async fn create_peer_connection(
 ) -> Result<PeerConnection, LibWebrtcError> {
     let PeerConnectionQueueInner {
         id,
-        session_id,
+        session_id: _,
         name,
     } = peer_connection_queue_inner;
-
-    // let peer_connection_factory = &shared_state.lock().await.peer_connection_factory;
-
-    // let session = shared_state
-    //     .lock()
-    //     .await
-    //     .data
-    //     .sessions
-    //     .get_mut(session_id)
-    //     .ok_or_else(|| LibWebrtcError::Generic("Invalid session"))?;
-
-    // session
-    //     .add_peer_connection(peer_connection_factory, id.into(), name.into())
-    //     .await
-    //     .map_err(|_e| LibWebrtcError::Generic("could not create peer connection"))?;
-
-    // let peer_connection = &*session.peer_connections.get_mut(id).unwrap();
-
-    // // possible observer leak
-    // shared_state
-    //     .lock()
-    //     .await
-    //     .peer_connection_factory
-    //     .create_and_add_video_track(&peer_connection.webrtc_peer_connection, &video_source);
-
+    // create the peer connection from the peer connection factory
     let peer_connection = PeerConnection::new(
         &shared_state.lock().await.peer_connection_factory,
         id.into(),
@@ -114,7 +86,7 @@ async fn create_peer_connection(
     .await
     .map_err(|_e| LibWebrtcError::Generic("could not create peer connection"))?;
 
-    // possible observer leak
+    // add the video track.  Chinmany note: possible observer leak
     shared_state
         .lock()
         .await
@@ -183,6 +155,7 @@ async fn send_receive_offer(
                 // end listening for messages, we're done
                 break;
             }
+            // we don't care about other message types here
             _ => {
                 error!("invalid message")
             }
@@ -201,26 +174,6 @@ async fn send_receive_offer(
             break;
         }
     }
-
-    // // collect stats every second
-    // let mut pc_stats = pc.webrtc_peer_connection.clone();
-    // let (_close_tx, mut close_rx) = oneshot::channel::<()>();
-
-    // tokio::spawn(async move {
-    //     let stats: RTCStatsCollectorCallback = DummyRTCStatsCollector {}.into();
-    //     let mut interval = interval(Duration::from_secs(1));
-    //     interval.tick().await;
-
-    //     loop {
-    //         // trace!("collecting stats for video {}", &pc.name);
-    //         match close_rx.try_recv() {
-    //             Err(TryRecvError::Closed) | Ok(()) => return,
-    //             Err(TryRecvError::Empty) => {}
-    //         };
-    //         let _ = pc_stats.get_stats(&stats);
-    //         interval.tick().await;
-    //     }
-    // });
 
     // drop the reference
     ChannelPeerConnectionObserver::drop_ref(holder._ptr);
@@ -242,12 +195,6 @@ async fn send_receive_offer(
     // pause in each thread to let the video stream
     // TODO: implement something better (channels?)
     sleep(Duration::from_secs(video_time_s.into())).await;
-
-    // info!("closing websocket");
-
-    // if let Err(e) = close_tx.send(()) {
-    //     error!("could not send close_tx: {:?}", e)
-    // };
 
     Ok(())
 }
@@ -304,8 +251,6 @@ async fn handle_websocket(
 
         // TODO: listen for ws disconnection and break out of loop
     }
-
-    Ok(())
 }
 
 // main websocket entry point

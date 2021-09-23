@@ -10,6 +10,9 @@ pub enum ServerError {
     #[error("Could not create peer connection: {0}")]
     CreatePeerConnectionError(String),
 
+    #[error("Could not retrieve stats for session {0}, peer connection {1}")]
+    GetStatsError(String, String),
+
     #[error("Internal error: {0}")]
     InternalError(String),
 

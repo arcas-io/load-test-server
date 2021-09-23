@@ -1,10 +1,7 @@
-use libwebrtc::stats_collector::{DummyRTCStatsCollector, RTCStatsCollectorCallback};
-
-use crate::error::Result;
+use crate::error::{Result, ServerError};
 use crate::helpers::systemtime_to_timestamp;
 use crate::session::{Session, State};
 use libwebrtc::ffi::stats_collector::Rs_VideoSenderStats;
-use log::{info, warn};
 use std::time::SystemTime;
 
 #[derive(Debug)]
@@ -112,7 +109,9 @@ pub(crate) async fn get_stats(session: &mut Session) -> Result<Stats> {
         let peer_connection = session
             .peer_connections
             .remove(&peer_connection_id)
-            .unwrap();
+            .ok_or_else(|| {
+                ServerError::GetStatsError(session.id.clone(), peer_connection_id.clone())
+            })?;
 
         // get the peer connection's stats
         let video_sender = peer_connection.get_stats();
@@ -124,7 +123,10 @@ pub(crate) async fn get_stats(session: &mut Session) -> Result<Stats> {
         peer_connections.push(peer_connection_stats);
 
         // put the peer connection back into the hashmap
-        session.add_peer_connection(peer_connection).await.unwrap();
+        session
+            .add_peer_connection(peer_connection)
+            .await
+            .map_err(|_e| ServerError::GetStatsError(session.id.clone(), peer_connection_id))?;
     }
 
     let stats = Stats {
@@ -141,8 +143,8 @@ mod tests {
     use crate::data::Data;
     use std::{thread, time::Duration};
 
-    #[test]
-    fn it_gets_stats() {
+    #[tokio::test]
+    async fn it_gets_stats() {
         let session = Session::new("New Session".into());
         let session_id = session.id.clone();
         let mut data = Data::new();
@@ -152,12 +154,12 @@ mod tests {
         session.start().unwrap();
 
         thread::sleep(Duration::from_millis(1000));
-        let stats = get_stats(&session).unwrap();
+        let stats = get_stats(session).await.unwrap();
         assert_eq!(1, stats.session.elapsed_time);
 
         session.stop().unwrap();
 
-        let stats = get_stats(&session).unwrap();
+        let stats = get_stats(session).await.unwrap();
         println!("{:#?}", stats);
         assert_eq!(2, stats.session.elapsed_time);
     }

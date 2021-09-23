@@ -1,11 +1,10 @@
 use crate::error::{Result, ServerError};
 use crate::helpers::elapsed;
-use crate::peer_connection::{PeerConnection, PeerConnectionQueue, PeerConnectionQueueInner};
+use crate::peer_connection::{PeerConnection, PeerConnectionQueue};
 use crate::stats::{get_stats, Stats};
-use libwebrtc::peerconnection_factory::PeerConnectionFactory;
 use log::info;
 use nanoid::nanoid;
-use std::collections::{hash_map::Entry, HashMap, VecDeque};
+use std::collections::{HashMap, VecDeque};
 use std::time::SystemTime;
 
 pub(crate) type PeerConnections = HashMap<String, PeerConnection>;

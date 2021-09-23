@@ -37,6 +37,7 @@ pub(crate) struct PeerConnectionQueueInner {
     pub(crate) name: String,
 }
 
+/// Queue to fill on the gRPC side to be consumed by the websocket
 pub(crate) type PeerConnectionQueue = VecDeque<PeerConnectionQueueInner>;
 
 #[allow(dead_code)]
@@ -121,13 +122,17 @@ impl PeerConnection {
         config
     }
 
+    /// Send the callback to the rust ffi bindings and just listen for the first message.
+    ///
+    /// If the message fails, just return an empty vec.
     pub(crate) fn get_stats(&self) -> Vec<Rs_VideoSenderStats> {
         let (sender, receiver) = channel();
         let sender = Arc::new(Mutex::new(sender));
         let stats_collector = DummyRTCStatsCollector::new(sender);
         let stats_callback: RTCStatsCollectorCallback = stats_collector.into();
         let _ = self.webrtc_peer_connection.get_stats(&stats_callback);
-        let stats = receiver.recv().unwrap();
+        let stats = receiver.recv().unwrap_or(vec![]);
+
         stats
     }
 }
@@ -138,16 +143,24 @@ mod tests {
     use super::*;
     use nanoid::nanoid;
 
-    #[tokio::test]
-    async fn it_creates_a_new_peer_connection() {
-        tracing_subscriber::fmt::init();
+    async fn new_peer_connection() -> Result<PeerConnection> {
         let peer_connection_factory = PeerConnectionFactory::new().unwrap();
-        let _peer_connection = PeerConnection::new(
+        PeerConnection::new(
             &peer_connection_factory,
             nanoid!(),
             "New Peer Connection".into(),
         )
         .await
-        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn it_creates_a_new_peer_connection() {
+        new_peer_connection().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn it_gets_stats_for_a_peer_connection() {
+        let peer_connection = new_peer_connection().await.unwrap();
+        let stats = peer_connection.get_stats();
     }
 }

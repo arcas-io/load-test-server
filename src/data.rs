@@ -3,7 +3,7 @@ use crate::peer_connection::PeerConnectionQueue;
 use crate::session::Session;
 use libwebrtc::peerconnection_factory::PeerConnectionFactory;
 use log::info;
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 

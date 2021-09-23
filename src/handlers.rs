@@ -63,13 +63,14 @@ impl WebRtc for SharedState {
 
         let session_id = request.into_inner().session_id;
         let stats = call_session!(self, session_id, get_stats).await?;
+        let peer_connections = stats
+            .peer_connections
+            .into_iter()
+            .map(|peer_connection_stats| peer_connection_stats.into())
+            .collect();
         let reply = webrtc::GetStatsResponse {
             session: Some(stats.session.into()),
-            peer_connections: stats
-                .peer_connections
-                .into_iter()
-                .map(|peer_connection_stats| peer_connection_stats.into())
-                .collect(),
+            peer_connections,
         };
 
         Ok(Response::new(reply))
