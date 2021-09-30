@@ -310,7 +310,7 @@ pub(crate) async fn serve(shared_state: SharedState) {
                 .into_inner(),
         );
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+    let addr = SocketAddr::from(([127, 0, 0, 1], 3001));
 
     info!("Starting ws service on {:?}", &addr);
 

@@ -1,6 +1,20 @@
 "use strict";
 
-let ws = new WebSocket("ws://localhost:3000/ws");
+// let ws = new WebSocket("wss://127.0.0.1:3000/ws");
+// connect to the SFU
+const socket = io("https://127.0.0.1:3000", {
+  secure: true,
+  reconnection: true,
+  rejectUnauthorized: false,
+  path: "/ws",
+  transports: ["websocket"],
+});
+
+// promisify the socket requests
+const socketRequest = (type, data = {}) => {
+  return new Promise((resolve) => socket.emit(type, data, resolve));
+};
+
 const connections = [];
 
 function createConnection() {
@@ -36,38 +50,75 @@ function newVideo(id, parent) {
 
 let connection;
 
-ws.onmessage = (message) => {
-  console.log("new message ", message);
+socket.on("connect", function () {
+  console.log("connected");
 
-  let data = JSON.parse(message.data);
+  socket.on("message", function (message) {
+    console.log("new message ", message);
 
-  if (data.type && data.type == "offer") {
-    connection = createConnection();
-    console.log("getNextConnection", connection);
+    let data = JSON.parse(message.data);
 
-    if (connection) {
-      const pc = connection.peerConnection;
-      pc.setRemoteDescription(new RTCSessionDescription(data));
-      pc.createAnswer().then((desc) => {
-        console.log("desc", desc);
-        ws.send(JSON.stringify({ type: "answer", sdp: desc.sdp }));
-        pc.setLocalDescription(desc);
-      });
+    if (data.type && data.type == "offer") {
+      connection = createConnection();
+      console.log("getNextConnection", connection);
+
+      if (connection) {
+        const pc = connection.peerConnection;
+        pc.setRemoteDescription(new RTCSessionDescription(data));
+        pc.createAnswer().then((desc) => {
+          console.log("desc", desc);
+          ws.send(JSON.stringify({ type: "answer", sdp: desc.sdp }));
+          pc.setLocalDescription(desc);
+        });
+      }
+      return;
     }
-    return;
-  }
 
-  // TODO: is this ever called?
-  // if (data.type == "candidate") {
-  //   console.log("sdp", data.sdp);
-  //   let candidate = new RTCIceCandidate({
-  //     candidate: data.sdp.candidate,
-  //     sdpMid: "something", // don't make it up, you get this in onicecandidate
-  //     sdpMLineIndex: 12345,
-  //   });
-  //   last_connection.peerConnection.addIceCandidate(candidate);
-  // }
-};
+    // TODO: is this ever called?
+    // if (data.type == "candidate") {
+    //   console.log("sdp", data.sdp);
+    //   let candidate = new RTCIceCandidate({
+    //     candidate: data.sdp.candidate,
+    //     sdpMid: "something", // don't make it up, you get this in onicecandidate
+    //     sdpMLineIndex: 12345,
+    //   });
+    //   last_connection.peerConnection.addIceCandidate(candidate);
+    // }
+  });
+});
+
+// ws.onmessage = (message) => {
+//   console.log("new message ", message);
+
+//   let data = JSON.parse(message.data);
+
+//   if (data.type && data.type == "offer") {
+//     connection = createConnection();
+//     console.log("getNextConnection", connection);
+
+//     if (connection) {
+//       const pc = connection.peerConnection;
+//       pc.setRemoteDescription(new RTCSessionDescription(data));
+//       pc.createAnswer().then((desc) => {
+//         console.log("desc", desc);
+//         ws.send(JSON.stringify({ type: "answer", sdp: desc.sdp }));
+//         pc.setLocalDescription(desc);
+//       });
+//     }
+//     return;
+//   }
+
+//   // TODO: is this ever called?
+//   // if (data.type == "candidate") {
+//   //   console.log("sdp", data.sdp);
+//   //   let candidate = new RTCIceCandidate({
+//   //     candidate: data.sdp.candidate,
+//   //     sdpMid: "something", // don't make it up, you get this in onicecandidate
+//   //     sdpMLineIndex: 12345,
+//   //   });
+//   //   last_connection.peerConnection.addIceCandidate(candidate);
+//   // }
+// };
 
 async function onicecandidate(evt) {
   await waitForOpenSocket(ws);
