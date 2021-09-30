@@ -10,6 +10,11 @@ service WebRtc {
   rpc GetStats(GetStatsRequest) returns (GetStatsResponse);
   rpc CreatePeerConnection(CreatePeerConnectionRequest)
       returns (CreatePeerConnectionResponse);
+  // PeerConnection methods
+  rpc CreateOffer(CreateSDPRequest) returns (CreateSDPResponse);
+  rpc CreateAnswer(CreateSDPRequest) returns (CreateSDPResponse);
+  rpc SetLocalDescription(SetSDPRequest) returns (SetSDPResponse);
+  rpc SetRemoteDescription(SetSDPRequest) returns (SetSDPResponse);
 }
 
 // Reusable empty message
@@ -73,3 +78,8 @@ message CreatePeerConnectionRequest {
   string name = 2;
 }
 message CreatePeerConnectionResponse { string peer_connection_id = 1; }
+
+message CreateSDPRequest { string session_id = 1; string peer_connection_id = 2; }
+message CreateSDPResponse { string session_id = 1; string peer_connection_id = 2; string sdp = 3; } 
+message SetSDPRequest { string session_id = 1; string peer_connection_id = 2; string sdp = 3; }
+message SetSDPResponse { string session_id = 1; string peer_connection_id = 2; bool success = 3; }

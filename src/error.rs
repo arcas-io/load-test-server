@@ -27,6 +27,9 @@ pub enum ServerError {
 
     #[error("Parse error: {0}")]
     ParseError(String),
+
+    #[error("PeerConnection {0} does not exist")]
+    InvalidPeerConnection(String),
 }
 
 impl From<AddrParseError> for ServerError {

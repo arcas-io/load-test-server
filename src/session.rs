@@ -2,12 +2,13 @@ use crate::error::{Result, ServerError};
 use crate::helpers::elapsed;
 use crate::peer_connection::{PeerConnection, PeerConnectionQueue};
 use crate::stats::{get_stats, Stats};
+use dashmap::DashMap;
 use log::info;
 use nanoid::nanoid;
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 use std::time::SystemTime;
 
-pub(crate) type PeerConnections = HashMap<String, PeerConnection>;
+pub(crate) type PeerConnections = DashMap<String, PeerConnection>;
 
 #[derive(Debug, Clone, PartialEq, strum::ToString)]
 pub(crate) enum State {
@@ -30,7 +31,7 @@ pub(crate) struct Session {
 impl Session {
     pub(crate) fn new(name: String) -> Self {
         let id = nanoid!();
-        let peer_connections: PeerConnections = HashMap::new();
+        let peer_connections: PeerConnections = DashMap::new();
         let peer_connection_queue: PeerConnectionQueue = VecDeque::new();
 
         Self {
@@ -98,13 +99,14 @@ impl Session {
     ) -> Result<()> {
         let peer_connection_id = peer_connection.id.clone();
 
-        self.peer_connections
-            .insert(peer_connection_id.clone(), peer_connection);
+        // self.peer_connections
+        //     .insert(peer_connection_id.clone(), peer_connection);
+        // self.peer_connections.insert(peer_connection_id.clone(), peer_connection);
 
-        info!(
-            "Added peer connection {} to session {}",
-            &peer_connection_id, &self.id
-        );
+        // info!(
+        //     "Added peer connection {} to session {}",
+        //     &peer_connection_id, &self.id
+        // );
 
         Ok(())
     }
@@ -142,8 +144,6 @@ impl Session {
 macro_rules! call_session {
     ($shared_state:expr, $session_id:expr, $fn:ident $(, $args:expr)*) => {
         $shared_state
-            .lock()
-            .await
             .data
             .sessions
             .get_mut(&$session_id)
