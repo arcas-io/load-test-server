@@ -115,19 +115,11 @@ mod tests {
     use super::*;
     use nanoid::nanoid;
 
-    fn new_peer_connection() -> Result<PeerConnection> {
-        pretty_env_logger::init();
-        let peer_connection_factory = PeerConnectionFactory::new().unwrap();
-        PeerConnection::new(
-            &peer_connection_factory,
-            nanoid!(),
-            "New Peer Connection".into(),
-        )
-    }
 
     #[tokio::test]
     async fn it_creates_a_new_peer_connection() {
-        let pc = new_peer_connection().unwrap();
+        let factory = PeerConnectionFactory::new().unwrap();
+        let pc = PeerConnection::new(&factory, nanoid!(), "new".into());
         debug!("dropping pc");
     }
 

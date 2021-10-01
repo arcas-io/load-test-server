@@ -42,19 +42,19 @@ impl Data {
     }
 }
 
-// #[cfg(test)]
-// mod tests {
+#[cfg(test)]
+mod tests {
 
-//     use super::*;
+    use super::*;
 
-//     #[test]
-//     fn it_adds_a_session() {
-//         let session = Session::new("New Session".into());
-//         let session_id = session.id.clone();
-//         let data = Data::new();
-//         data.add_session(session).unwrap();
-//         let added_session = data.sessions.get(&session_id).unwrap();
+    #[test]
+    fn it_adds_a_session() {
+        let session = Session::new("New Session".into());
+        let session_id = session.id.clone();
+        let data = Data::new();
+        data.add_session(session).unwrap();
+        let added_session = data.sessions.get(&session_id).unwrap();
 
-//         assert_eq!(session_id, added_session.id);
-//     }
-// }
+        assert_eq!(session_id, added_session.id);
+    }
+}
