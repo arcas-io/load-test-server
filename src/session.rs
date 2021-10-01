@@ -212,6 +212,7 @@ mod tests {
 
     #[tokio::test]
     async fn it_creates_a_peer_connection() {
+        use crate::PeerConnectionFactory;
         tracing_subscriber::fmt::init();
         let session = Session::new("New Session".into());
         let session_id = session.id.clone();
