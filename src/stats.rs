@@ -149,24 +149,25 @@ mod tests {
     use crate::data::Data;
     use std::{thread, time::Duration};
 
-    // #[tokio::test]
-    // async fn it_gets_stats() {
-    //     let session = Session::new("New Session".into());
-    //     let session_id = session.id.clone();
-    //     let data = Data::new();
-    //     data.add_session(session).unwrap();
+    #[tokio::test]
+    async fn it_gets_stats() {
+        let session = Session::new("New Session".into());
+        let session_id = session.id.clone();
+        let data = Data::new();
+        data.add_session(session).unwrap();
 
-    //     let session = &mut *data.sessions.get_mut(&session_id).unwrap();
-    //     session.start().unwrap();
+        let session = &mut *data.sessions.get_mut(&session_id).unwrap();
+        session.start().unwrap();
 
-    //     thread::sleep(Duration::from_millis(1000));
-    //     let stats = get_stats(session).await.unwrap();
-    //     assert_eq!(1, stats.session.elapsed_time);
+        thread::sleep(Duration::from_millis(1000));
+        let stats = get_stats(session).await.unwrap();
+        assert_eq!(1, stats.session.elapsed_time);
 
-    //     session.stop().unwrap();
+        thread::sleep(Duration::from_millis(1000));
+        session.stop().unwrap();
 
-    //     let stats = get_stats(session).await.unwrap();
-    //     println!("{:#?}", stats);
-    //     assert_eq!(2, stats.session.elapsed_time);
-    // }
+        let stats = get_stats(session).await.unwrap();
+        println!("{:#?}", stats);
+        assert_eq!(2, stats.session.elapsed_time);
+    }
 }
