@@ -100,7 +100,11 @@ pub(crate) struct Stats {
 }
 
 pub(crate) async fn get_stats(session: &mut Session) -> Result<Stats> {
-    let keys: Vec<String> = session.peer_connections.keys().cloned().collect();
+    let keys: Vec<String> = session
+        .peer_connections
+        .iter()
+        .map(|p| p.key().clone())
+        .collect();
     let mut peer_connections = vec![];
 
     for peer_connection_id in keys {
@@ -111,7 +115,8 @@ pub(crate) async fn get_stats(session: &mut Session) -> Result<Stats> {
             .remove(&peer_connection_id)
             .ok_or_else(|| {
                 ServerError::GetStatsError(session.id.clone(), peer_connection_id.clone())
-            })?;
+            })?
+            .1;
 
         // get the peer connection's stats
         let video_sender = peer_connection.get_stats();
@@ -136,6 +141,7 @@ pub(crate) async fn get_stats(session: &mut Session) -> Result<Stats> {
 
     Ok(stats)
 }
+
 #[cfg(test)]
 mod tests {
 
@@ -147,16 +153,17 @@ mod tests {
     async fn it_gets_stats() {
         let session = Session::new("New Session".into());
         let session_id = session.id.clone();
-        let mut data = Data::new();
+        let data = Data::new();
         data.add_session(session).unwrap();
 
-        let session = data.sessions.get_mut(&session_id).unwrap();
+        let session = &mut *data.sessions.get_mut(&session_id).unwrap();
         session.start().unwrap();
 
         thread::sleep(Duration::from_millis(1000));
         let stats = get_stats(session).await.unwrap();
         assert_eq!(1, stats.session.elapsed_time);
 
+        thread::sleep(Duration::from_millis(1000));
         session.stop().unwrap();
 
         let stats = get_stats(session).await.unwrap();

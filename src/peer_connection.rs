@@ -6,21 +6,20 @@ use libwebrtc::peerconnection::{
     IceServer, PeerConnection as WebRtcPeerConnection, RTCConfiguration,
 };
 use libwebrtc::peerconnection_factory::PeerConnectionFactory;
-use libwebrtc::peerconnection_observer::{
-    IceConnectionState, PeerConnectionObserver, PeerConnectionObserverTrait,
-};
+use libwebrtc::peerconnection_observer::{PeerConnectionObserver, PeerConnectionObserverTrait};
 use libwebrtc::stats_collector::{DummyRTCStatsCollector, RTCStatsCollectorCallback};
+use log::debug;
 use std::collections::VecDeque;
 use std::sync::mpsc::channel;
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc::{Receiver, Sender};
-use tracing::{debug, info, warn};
+use tracing::{info, warn};
 
 pub(crate) struct PeerConnection {
     pub(crate) id: String,
     pub(crate) name: String,
     pub(crate) webrtc_peer_connection: WebRtcPeerConnection,
-    pub(crate) holder: ChannelPCObsPtr<ChannelPeerConnectionObserver>,
+    pub(crate) observer: PeerConnectionObserver,
     pub(crate) receiver: Receiver<String>,
 }
 
@@ -40,43 +39,16 @@ pub(crate) struct PeerConnectionQueueInner {
 /// Queue to fill on the gRPC side to be consumed by the websocket
 pub(crate) type PeerConnectionQueue = VecDeque<PeerConnectionQueueInner>;
 
-#[allow(dead_code)]
-pub(crate) struct ChannelPCObsPtr<T: PeerConnectionObserverTrait> {
-    pub(crate) _ptr: *mut T,
-}
-
-unsafe impl<T: PeerConnectionObserverTrait> Send for ChannelPCObsPtr<T> {}
-unsafe impl<T: PeerConnectionObserverTrait> Sync for ChannelPCObsPtr<T> {}
-
 #[derive(Clone)]
 pub(crate) struct ChannelPeerConnectionObserver {
-    sender: Sender<String>,
-}
-
-impl ChannelPeerConnectionObserver {
-    pub(crate) fn new(sender: Sender<String>) -> Box<Self> {
-        Box::new(Self { sender })
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn drop_ref(obs: *mut Self) {
-        unsafe { Box::from_raw(obs) };
-
-        // drop here
-
-        debug!("peerconnection observer dropped");
-    }
+    pub(crate) sender: Sender<String>,
 }
 
 impl PeerConnectionObserverTrait for ChannelPeerConnectionObserver {
-    fn on_standardized_ice_connection_change(&mut self, state: IceConnectionState) {
-        info!("new state: {:?}", state);
-    }
-
-    fn on_ice_candidate(&mut self, candidate_sdp: String, sdp_mid: String, sdp_mline_index: u32) {
+    fn on_ice_candidate(&mut self, candidate_sdp: &str, sdp_mid: &str, sdp_mline_index: u32) {
         info!("candidate generated: {} {}", sdp_mid, sdp_mline_index);
 
-        match self.sender.blocking_send(candidate_sdp) {
+        match self.sender.blocking_send(candidate_sdp.to_owned()) {
             Err(_err) => {
                 warn!("could not pass sdp candidate");
             }
@@ -86,27 +58,27 @@ impl PeerConnectionObserverTrait for ChannelPeerConnectionObserver {
 }
 
 impl PeerConnection {
-    pub(crate) async fn new(
+    pub(crate) fn new(
         peer_connection_factory: &PeerConnectionFactory,
         id: String,
         name: String,
     ) -> Result<PeerConnection> {
+        debug!("Creating observer");
         let (tx, rx) = tokio::sync::mpsc::channel::<String>(10);
-        let holder = ChannelPCObsPtr {
-            _ptr: Box::into_raw(ChannelPeerConnectionObserver::new(tx)),
-        };
-        let observer = PeerConnectionObserver::new(holder._ptr)
+        let observer = PeerConnectionObserver::new(ChannelPeerConnectionObserver { sender: tx })
             .map_err(|e| ServerError::CreatePeerConnectionError(e.to_string()))?;
+        debug!("created pc observer");
 
         let webrtc_peer_connection = peer_connection_factory
             .create_peer_connection(&observer, Self::rtc_config())
             .map_err(|e| ServerError::CreatePeerConnectionError(e.to_string()))?;
+        debug!("created peerconnection");
 
         Ok(PeerConnection {
             id,
             name,
             webrtc_peer_connection,
-            holder,
+            observer,
             receiver: rx,
         })
     }
@@ -143,24 +115,16 @@ mod tests {
     use super::*;
     use nanoid::nanoid;
 
-    async fn new_peer_connection() -> Result<PeerConnection> {
-        let peer_connection_factory = PeerConnectionFactory::new().unwrap();
-        PeerConnection::new(
-            &peer_connection_factory,
-            nanoid!(),
-            "New Peer Connection".into(),
-        )
-        .await
-    }
-
     #[tokio::test]
     async fn it_creates_a_new_peer_connection() {
-        new_peer_connection().await.unwrap();
+        let factory = PeerConnectionFactory::new().unwrap();
+        PeerConnection::new(&factory, nanoid!(), "new".into()).unwrap();
     }
 
     #[tokio::test]
     async fn it_gets_stats_for_a_peer_connection() {
-        let peer_connection = new_peer_connection().await.unwrap();
-        let stats = peer_connection.get_stats();
+        let factory = PeerConnectionFactory::new().unwrap();
+        let pc = PeerConnection::new(&factory, nanoid!(), "new".into()).unwrap();
+        let _stats = pc.get_stats();
     }
 }

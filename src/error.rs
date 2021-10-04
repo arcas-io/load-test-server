@@ -16,6 +16,9 @@ pub enum ServerError {
     #[error("Internal error: {0}")]
     InternalError(String),
 
+    #[error("PeerConnection {0} does not exist")]
+    InvalidPeerConnection(String),
+
     #[error("Session {0} does not exist")]
     InvalidSessionError(String),
 
