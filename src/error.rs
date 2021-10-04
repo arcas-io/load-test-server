@@ -16,6 +16,9 @@ pub enum ServerError {
     #[error("Internal error: {0}")]
     InternalError(String),
 
+    #[error("PeerConnection {0} does not exist")]
+    InvalidPeerConnection(String),
+
     #[error("Session {0} does not exist")]
     InvalidSessionError(String),
 
@@ -27,9 +30,6 @@ pub enum ServerError {
 
     #[error("Parse error: {0}")]
     ParseError(String),
-
-    #[error("PeerConnection {0} does not exist")]
-    InvalidPeerConnection(String),
 }
 
 impl From<AddrParseError> for ServerError {
