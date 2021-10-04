@@ -77,9 +77,17 @@ message CreatePeerConnectionRequest {
   string session_id = 1;
   string name = 2;
 }
+
 message CreatePeerConnectionResponse { string peer_connection_id = 1; }
 
+enum SDPType {
+  OFFER = 0;
+  PRANSWER = 1;
+  ANSWER = 2;
+  ROLLBACK = 3;
+}
+
 message CreateSDPRequest { string session_id = 1; string peer_connection_id = 2; }
-message CreateSDPResponse { string session_id = 1; string peer_connection_id = 2; string sdp = 3; } 
-message SetSDPRequest { string session_id = 1; string peer_connection_id = 2; string sdp = 3; }
+message CreateSDPResponse { string session_id = 1; string peer_connection_id = 2; string sdp = 3; SDPType sdp_type = 4; } 
+message SetSDPRequest { string session_id = 1; string peer_connection_id = 2; string sdp = 3; SDPType sdp_type = 4; }
 message SetSDPResponse { string session_id = 1; string peer_connection_id = 2; bool success = 3; }
