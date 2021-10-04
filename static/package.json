@@ -1,0 +1,20 @@
+{
+  "name": "test-browser",
+  "version": "1.0.0",
+  "description": "Test Browser",
+  "main": "index.js",
+  "license": "MIT",
+  "private": true,
+  "dependencies": {
+    "mediasoup-client": "^3.6.42",
+    "socket.io-client": "^4.2.0"
+  },
+  "devDependencies": {
+    "browserify": "^17.0.0",
+    "watchify": "^4.0.0"
+  },
+  "scripts": {
+    "bundle": "browserify index.js -o bundle.js",
+    "watch": "watchify index.js -o bundle.js"
+  }
+}
