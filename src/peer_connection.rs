@@ -118,13 +118,13 @@ mod tests {
     #[tokio::test]
     async fn it_creates_a_new_peer_connection() {
         let factory = PeerConnectionFactory::new().unwrap();
-        let pc = PeerConnection::new(&factory, nanoid!(), "new".into());
-        debug!("dropping pc");
+        PeerConnection::new(&factory, nanoid!(), "new".into()).unwrap();
     }
 
-    // #[tokio::test]
-    // async fn it_gets_stats_for_a_peer_connection() {
-    //     let peer_connection = new_peer_connection().unwrap();
-    //     let _stats = peer_connection.get_stats();
-    // }
+    #[tokio::test]
+    async fn it_gets_stats_for_a_peer_connection() {
+        let factory = PeerConnectionFactory::new().unwrap();
+        let pc = PeerConnection::new(&factory, nanoid!(), "new".into()).unwrap();
+        let _stats = pc.get_stats();
+    }
 }
