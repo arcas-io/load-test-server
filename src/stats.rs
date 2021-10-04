@@ -100,7 +100,9 @@ pub(crate) struct Stats {
 }
 
 pub(crate) async fn get_stats(session: &mut Session) -> Result<Stats> {
-    let keys: Vec<String> = session.peer_connections.iter()
+    let keys: Vec<String> = session
+        .peer_connections
+        .iter()
         .map(|p| p.key().clone())
         .collect();
     let mut peer_connections = vec![];
@@ -113,7 +115,8 @@ pub(crate) async fn get_stats(session: &mut Session) -> Result<Stats> {
             .remove(&peer_connection_id)
             .ok_or_else(|| {
                 ServerError::GetStatsError(session.id.clone(), peer_connection_id.clone())
-            })?.1;
+            })?
+            .1;
 
         // get the peer connection's stats
         let video_sender = peer_connection.get_stats();

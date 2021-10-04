@@ -65,7 +65,7 @@ impl PeerConnection {
     ) -> Result<PeerConnection> {
         debug!("Creating observer");
         let (tx, rx) = tokio::sync::mpsc::channel::<String>(10);
-        let observer = PeerConnectionObserver::new(ChannelPeerConnectionObserver{ sender: tx })
+        let observer = PeerConnectionObserver::new(ChannelPeerConnectionObserver { sender: tx })
             .map_err(|e| ServerError::CreatePeerConnectionError(e.to_string()))?;
         debug!("created pc observer");
 
@@ -114,7 +114,6 @@ mod tests {
 
     use super::*;
     use nanoid::nanoid;
-
 
     #[tokio::test]
     async fn it_creates_a_new_peer_connection() {

@@ -99,7 +99,8 @@ impl Session {
     ) -> Result<()> {
         let peer_connection_id = peer_connection.id.clone();
 
-        self.peer_connections.insert(peer_connection_id.clone(), peer_connection);
+        self.peer_connections
+            .insert(peer_connection_id.clone(), peer_connection);
 
         info!(
             "Added peer connection {} to session {}",
@@ -227,14 +228,7 @@ mod tests {
             let pc = PeerConnection::new(&factory.clone(), pc_id.clone(), "new".into()).unwrap();
             session.add_peer_connection(pc).await.unwrap();
 
-            assert_eq!(
-                session
-                    .peer_connections
-                    .get(&pc_id)
-                    .unwrap()
-                    .id,
-                pc_id
-            );
+            assert_eq!(session.peer_connections.get(&pc_id).unwrap().id, pc_id);
         }
     }
 }
