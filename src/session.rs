@@ -2,12 +2,13 @@ use crate::error::{Result, ServerError};
 use crate::helpers::elapsed;
 use crate::peer_connection::{PeerConnection, PeerConnectionQueue};
 use crate::stats::{get_stats, Stats};
+use dashmap::DashMap;
 use log::info;
 use nanoid::nanoid;
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 use std::time::SystemTime;
 
-pub(crate) type PeerConnections = HashMap<String, PeerConnection>;
+pub(crate) type PeerConnections = DashMap<String, PeerConnection>;
 
 #[derive(Debug, Clone, PartialEq, strum::ToString)]
 pub(crate) enum State {
@@ -30,7 +31,7 @@ pub(crate) struct Session {
 impl Session {
     pub(crate) fn new(name: String) -> Self {
         let id = nanoid!();
-        let peer_connections: PeerConnections = HashMap::new();
+        let peer_connections: PeerConnections = DashMap::new();
         let peer_connection_queue: PeerConnectionQueue = VecDeque::new();
 
         Self {
@@ -142,8 +143,6 @@ impl Session {
 macro_rules! call_session {
     ($shared_state:expr, $session_id:expr, $fn:ident $(, $args:expr)*) => {
         $shared_state
-            .lock()
-            .await
             .data
             .sessions
             .get_mut(&$session_id)
@@ -155,6 +154,8 @@ macro_rules! call_session {
 #[cfg(test)]
 mod tests {
 
+    use libwebrtc::peerconnection_factory::PeerConnectionFactory;
+
     use super::*;
     use crate::data::Data;
 
@@ -162,7 +163,7 @@ mod tests {
     fn it_adds_a_session() {
         let session = Session::new("New Session".into());
         let session_id = session.id.clone();
-        let mut data = Data::new();
+        let data = Data::new();
         data.add_session(session).unwrap();
 
         assert_eq!(session_id, data.sessions.get(&session_id).unwrap().id);
@@ -172,10 +173,10 @@ mod tests {
     fn it_starts_a_session() {
         let session = Session::new("New Session".into());
         let session_id = session.id.clone();
-        let mut data = Data::new();
+        let data = Data::new();
         data.add_session(session).unwrap();
 
-        let session = data.sessions.get_mut(&session_id).unwrap();
+        let session = &mut *data.sessions.get_mut(&session_id).unwrap();
         session.start().unwrap();
 
         assert_eq!(State::Started, session.state);
@@ -185,10 +186,10 @@ mod tests {
     fn it_stops_a_session() {
         let session = Session::new("New Session".into());
         let session_id = session.id.clone();
-        let mut data = Data::new();
+        let data = Data::new();
         data.add_session(session).unwrap();
 
-        let session = data.sessions.get_mut(&session_id).unwrap();
+        let session = &mut *data.sessions.get_mut(&session_id).unwrap();
         session.start().unwrap();
         session.stop().unwrap();
 
@@ -199,10 +200,10 @@ mod tests {
     async fn it_gets_stats() {
         let session = Session::new("New Session".into());
         let session_id = session.id.clone();
-        let mut data = Data::new();
+        let data = Data::new();
         data.add_session(session).unwrap();
 
-        let session = data.sessions.get_mut(&session_id).unwrap();
+        let session = &mut *data.sessions.get_mut(&session_id).unwrap();
         session.start().unwrap();
         let stats = session.get_stats().await;
 
@@ -213,32 +214,21 @@ mod tests {
     #[tokio::test]
     async fn it_creates_a_peer_connection() {
         tracing_subscriber::fmt::init();
+        let factory = PeerConnectionFactory::new().unwrap();
         let session = Session::new("New Session".into());
         let session_id = session.id.clone();
-        let mut data = Data::new();
+        let data = Data::new();
         data.add_session(session).unwrap();
 
-        let session = data.sessions.get_mut(&session_id).unwrap();
+        let session = &mut *data.sessions.get_mut(&session_id).unwrap();
         session.start().unwrap();
 
-        let peer_connection_factory = PeerConnectionFactory::new().unwrap();
-        let peer_connection_id = nanoid!();
-        let peer_connection = PeerConnection::new(
-            &peer_connection_factory,
-            peer_connection_id.clone(),
-            "New Peer Connection".into(),
-        )
-        .await
-        .unwrap();
-        session.add_peer_connection(peer_connection).await.unwrap();
+        let pc_id = nanoid!();
+        {
+            let pc = PeerConnection::new(&factory.clone(), pc_id.clone(), "new".into()).unwrap();
+            session.add_peer_connection(pc).await.unwrap();
 
-        assert_eq!(
-            session
-                .peer_connections
-                .get(&peer_connection_id)
-                .unwrap()
-                .id,
-            peer_connection_id
-        );
+            assert_eq!(session.peer_connections.get(&pc_id).unwrap().id, pc_id);
+        }
     }
 }
