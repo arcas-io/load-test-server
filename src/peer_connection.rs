@@ -15,6 +15,8 @@ use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc::{Receiver, Sender};
 use tracing::{info, warn};
 
+// TODO: temp allowing dead code, only used in tests currently
+#[allow(dead_code)]
 pub(crate) struct PeerConnection {
     pub(crate) id: String,
     pub(crate) name: String,
@@ -48,15 +50,14 @@ impl PeerConnectionObserverTrait for ChannelPeerConnectionObserver {
     fn on_ice_candidate(&mut self, candidate_sdp: &str, sdp_mid: &str, sdp_mline_index: u32) {
         info!("candidate generated: {} {}", sdp_mid, sdp_mline_index);
 
-        match self.sender.blocking_send(candidate_sdp.to_owned()) {
-            Err(_err) => {
-                warn!("could not pass sdp candidate");
-            }
-            _ => {}
+        if self.sender.blocking_send(candidate_sdp.to_owned()).is_err() {
+            warn!("could not pass sdp candidate");
         }
     }
 }
 
+// TODO: temp allowing dead code, only used in tests currently
+#[allow(dead_code)]
 impl PeerConnection {
     pub(crate) fn new(
         peer_connection_factory: &PeerConnectionFactory,
@@ -84,14 +85,15 @@ impl PeerConnection {
     }
 
     fn rtc_config() -> RTCConfiguration {
-        let mut config = RTCConfiguration::default();
-        config.ice_servers = vec![IceServer {
-            username: None,
-            password: None,
-            hostname: None,
-            urls: vec!["stun:stun.l.google.com:19302".to_string()],
-        }];
-        config
+        RTCConfiguration {
+            ice_servers: vec![IceServer {
+                username: None,
+                password: None,
+                hostname: None,
+                urls: vec!["stun:stun.l.google.com:19302".to_string()],
+            }],
+            ..Default::default()
+        }
     }
 
     /// Send the callback to the rust ffi bindings and just listen for the first message.
@@ -103,9 +105,8 @@ impl PeerConnection {
         let stats_collector = DummyRTCStatsCollector::new(sender);
         let stats_callback: RTCStatsCollectorCallback = stats_collector.into();
         let _ = self.webrtc_peer_connection.get_stats(&stats_callback);
-        let stats = receiver.recv().unwrap_or(vec![]);
 
-        stats
+        receiver.recv().unwrap_or_default()
     }
 }
 

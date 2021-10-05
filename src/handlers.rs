@@ -1,8 +1,8 @@
 use crate::data::SharedState;
-use crate::error;
 use crate::peer_connection::PeerConnectionQueueInner;
 use crate::server::webrtc;
 use crate::session::Session;
+use crate::ServerError;
 use libwebrtc::sdp::SessionDescription;
 use log::info;
 use tonic::{Request, Response, Status};
@@ -53,7 +53,7 @@ impl WebRtc for SharedState {
                 .data
                 .sessions
                 .get_mut(&session_id)
-                .ok_or(error::ServerError::InvalidSessionError(session_id))?;
+                .ok_or(ServerError::InvalidSessionError(session_id))?;
             session.start()?;
         }
         let reply = Empty {};
@@ -73,7 +73,7 @@ impl WebRtc for SharedState {
                 .data
                 .sessions
                 .get_mut(&session_id)
-                .ok_or(error::ServerError::InvalidSessionError(session_id))?;
+                .ok_or(ServerError::InvalidSessionError(session_id))?;
             session.stop()?;
         }
         let reply = webrtc::Empty {};
@@ -93,7 +93,7 @@ impl WebRtc for SharedState {
                 .data
                 .sessions
                 .get_mut(&session_id)
-                .ok_or(error::ServerError::InvalidSessionError(session_id))?;
+                .ok_or(ServerError::InvalidSessionError(session_id))?;
             session.get_stats().await?
         };
         let peer_connections = stats
@@ -142,15 +142,17 @@ impl WebRtc for SharedState {
     ) -> Result<tonic::Response<CreateSdpResponse>, tonic::Status> {
         let request = request.into_inner();
         let offer = {
-            let session = &*(self.data.sessions.get(&request.session_id).ok_or(
-                error::ServerError::InvalidSessionError(request.session_id.clone()),
-            )?);
+            let session = &*(self
+                .data
+                .sessions
+                .get(&request.session_id)
+                .ok_or_else(|| ServerError::InvalidSessionError(request.session_id.clone()))?);
             let peer_connection = &mut *session
                 .peer_connections
                 .get_mut(&request.peer_connection_id)
-                .ok_or(error::ServerError::InvalidPeerConnection(
-                    request.peer_connection_id.clone(),
-                ))?;
+                .ok_or_else(|| {
+                    ServerError::InvalidPeerConnection(request.peer_connection_id.clone())
+                })?;
             peer_connection.webrtc_peer_connection.create_offer()
         };
         match offer {
@@ -170,15 +172,17 @@ impl WebRtc for SharedState {
     ) -> Result<tonic::Response<CreateSdpResponse>, tonic::Status> {
         let request = request.into_inner();
         let answer = {
-            let session = &*(self.data.sessions.get(&request.session_id).ok_or(
-                error::ServerError::InvalidSessionError(request.session_id.clone()),
-            )?);
+            let session = &*(self
+                .data
+                .sessions
+                .get(&request.session_id)
+                .ok_or_else(|| ServerError::InvalidSessionError(request.session_id.clone()))?);
             let peer_connection = &mut *session
                 .peer_connections
                 .get_mut(&request.peer_connection_id)
-                .ok_or(error::ServerError::InvalidPeerConnection(
-                    request.peer_connection_id.clone(),
-                ))?;
+                .ok_or_else(|| {
+                    ServerError::InvalidPeerConnection(request.peer_connection_id.clone())
+                })?;
             peer_connection.webrtc_peer_connection.create_answer()
         };
         match answer {
@@ -197,24 +201,27 @@ impl WebRtc for SharedState {
         request: Request<SetSdpRequest>,
     ) -> Result<tonic::Response<SetSdpResponse>, tonic::Status> {
         let request = request.into_inner();
-        let sdp = SessionDescription::from_string(request.sdp_type().clone().into(), request.sdp)
+        let session_id = request.session_id.clone();
+        let peer_connection_id = request.peer_connection_id.clone();
+        let sdp = SessionDescription::from_string(request.sdp_type().into(), request.sdp)
             .map_err(|_| tonic::Status::invalid_argument("could not parse sdp"))?;
-        let session = &*(self.data.sessions.get(&request.session_id).ok_or(
-            error::ServerError::InvalidSessionError(request.session_id.clone()),
-        )?);
+        let session = &*(self
+            .data
+            .sessions
+            .get(&session_id)
+            .ok_or_else(|| ServerError::InvalidSessionError(session_id.clone()))?);
         let peer_connection = &mut *session
             .peer_connections
-            .get_mut(&request.peer_connection_id)
-            .ok_or(error::ServerError::InvalidPeerConnection(
-                request.peer_connection_id.clone(),
-            ))?;
+            .get_mut(&peer_connection_id)
+            .ok_or_else(|| ServerError::InvalidPeerConnection(peer_connection_id.clone()))?;
         peer_connection
             .webrtc_peer_connection
             .set_local_description(sdp)
             .map_err(|_| tonic::Status::internal("could not set sdp"))?;
+
         Ok(Response::new(SetSdpResponse {
-            session_id: request.session_id,
-            peer_connection_id: request.peer_connection_id,
+            session_id,
+            peer_connection_id,
             success: true,
         }))
     }
@@ -224,24 +231,27 @@ impl WebRtc for SharedState {
         request: Request<SetSdpRequest>,
     ) -> Result<tonic::Response<SetSdpResponse>, tonic::Status> {
         let request = request.into_inner();
-        let sdp = SessionDescription::from_string(request.sdp_type().clone().into(), request.sdp)
+        let session_id = request.session_id.clone();
+        let peer_connection_id = request.peer_connection_id.clone();
+        let sdp = SessionDescription::from_string(request.sdp_type().into(), request.sdp)
             .map_err(|_| tonic::Status::invalid_argument("could not parse sdp"))?;
-        let session = &*(self.data.sessions.get(&request.session_id).ok_or(
-            error::ServerError::InvalidSessionError(request.session_id.clone()),
-        )?);
+        let session = &*(self
+            .data
+            .sessions
+            .get(&session_id.clone())
+            .ok_or_else(|| ServerError::InvalidSessionError(session_id.clone()))?);
         let peer_connection = &mut *session
             .peer_connections
-            .get_mut(&request.peer_connection_id)
-            .ok_or(error::ServerError::InvalidPeerConnection(
-                request.peer_connection_id.clone(),
-            ))?;
+            .get_mut(&peer_connection_id)
+            .ok_or_else(|| ServerError::InvalidPeerConnection(peer_connection_id.clone()))?;
         peer_connection
             .webrtc_peer_connection
             .set_remote_description(sdp)
             .map_err(|_| tonic::Status::internal("could not set sdp"))?;
+
         Ok(Response::new(SetSdpResponse {
-            session_id: request.session_id,
-            peer_connection_id: request.peer_connection_id,
+            session_id,
+            peer_connection_id,
             success: true,
         }))
     }
