@@ -116,6 +116,10 @@ impl Session {
         &mut self,
         peer_connection: PeerConnection,
     ) -> Result<()> {
+        info!(
+            "Attempting to add peer connection {} for session {}",
+            peer_connection.id, self.id
+        );
         let peer_connection_id = peer_connection.id.clone();
 
         self.peer_connections

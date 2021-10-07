@@ -107,9 +107,10 @@ impl WebRtc for SharedState {
         )?;
 
         // add the video track
-        let video_source = get_session_attribute!(self, session_id.clone(), video_source);
-        self.peer_connection_factory
-            .create_and_add_video_track(&peer_connection.webrtc_peer_connection, &video_source);
+        self.peer_connection_factory.create_and_add_video_track(
+            &peer_connection.webrtc_peer_connection,
+            &get_session_attribute!(self, session_id.clone(), video_source),
+        );
 
         // add the peer connection to the session
         call_session!(self, session_id, add_peer_connection, peer_connection).await?;
