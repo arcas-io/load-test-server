@@ -1,9 +1,9 @@
 use crate::data::SharedState;
-use crate::peer_connection::PeerConnectionQueueInner;
+use crate::peer_connection::PeerConnection;
 use crate::server::webrtc;
 use crate::session::Session;
 use crate::ServerError;
-use crate::{call_session, peer_connection};
+use crate::{call_session, get_session_attribute};
 use libwebrtc::sdp::SessionDescription;
 use log::info;
 use tonic::{Request, Response, Status};
@@ -98,12 +98,20 @@ impl WebRtc for SharedState {
         let request = request.into_inner();
         let CreatePeerConnectionRequest { name, session_id } = request;
         let peer_connection_id = nanoid::nanoid!();
-        let peer_connection = crate::peer_connection::PeerConnection::new(
+
+        // create the peer connection
+        let peer_connection = PeerConnection::new(
             &self.peer_connection_factory,
             peer_connection_id.clone(),
             name.clone(),
         )?;
 
+        // add the video track
+        let video_source = get_session_attribute!(self, session_id.clone(), video_source);
+        self.peer_connection_factory
+            .create_and_add_video_track(&peer_connection.webrtc_peer_connection, &video_source);
+
+        // add the peer connection to the session
         call_session!(self, session_id, add_peer_connection, peer_connection).await?;
 
         let reply = webrtc::CreatePeerConnectionResponse { peer_connection_id };

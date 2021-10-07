@@ -7,6 +7,7 @@ use libwebrtc::peerconnection::{
 };
 use libwebrtc::peerconnection_factory::PeerConnectionFactory;
 use libwebrtc::peerconnection_observer::{PeerConnectionObserver, PeerConnectionObserverTrait};
+use libwebrtc::rust_video_track_source::RustTrackVideoSource;
 use libwebrtc::stats_collector::{DummyRTCStatsCollector, RTCStatsCollectorCallback};
 use log::debug;
 use std::collections::VecDeque;
@@ -56,8 +57,6 @@ impl PeerConnectionObserverTrait for ChannelPeerConnectionObserver {
     }
 }
 
-// TODO: temp allowing dead code, only used in tests currently
-#[allow(dead_code)]
 impl PeerConnection {
     pub(crate) fn new(
         peer_connection_factory: &PeerConnectionFactory,
@@ -107,6 +106,23 @@ impl PeerConnection {
         let _ = self.webrtc_peer_connection.get_stats(&stats_callback);
 
         receiver.recv().unwrap_or_default()
+    }
+
+    // stream a pre-encoded file from gstreamer to avoid encoding overhead
+    pub(crate) fn file_video_source() -> RustTrackVideoSource {
+        let video_source = RustTrackVideoSource::default();
+        let (width, height) = (720, 480);
+        video_source.start_gstreamer_thread_launch(
+            & format!(
+                "filesrc location=static/file.mp4 ! qtdemux name=demux demux.video_0 ! avdec_h264 ! videoconvert ! videoscale ! video/x-raw,format=I420,width={},height={}",
+                width,
+                height,
+            ),
+            width,
+            height,
+        );
+
+        video_source
     }
 }
 

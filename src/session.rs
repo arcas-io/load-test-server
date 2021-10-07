@@ -2,7 +2,9 @@ use crate::error::{Result, ServerError};
 use crate::helpers::elapsed;
 use crate::peer_connection::{PeerConnection, PeerConnectionQueue};
 use crate::stats::{get_stats, Stats};
+use core::fmt;
 use dashmap::DashMap;
+use libwebrtc::rust_video_track_source::RustTrackVideoSource;
 use log::info;
 use nanoid::nanoid;
 use std::collections::VecDeque;
@@ -17,15 +19,30 @@ pub(crate) enum State {
     Stopped,
 }
 
-#[derive(Debug)]
 pub(crate) struct Session {
     pub(crate) id: String,
     pub(crate) name: String,
     pub(crate) peer_connections: PeerConnections,
     pub(crate) peer_connection_queue: PeerConnectionQueue,
+    pub(crate) video_source: RustTrackVideoSource,
     pub(crate) state: State,
     pub(crate) start_time: Option<SystemTime>,
     pub(crate) stop_time: Option<SystemTime>,
+}
+
+impl fmt::Debug for Session {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "id={}, name={}, num_peer_connections={}, state={:?}, start_time={:?}, stop_time={:?}",
+            self.id,
+            self.name,
+            self.peer_connections.len(),
+            self.state,
+            self.start_time,
+            self.stop_time
+        )
+    }
 }
 
 impl Session {
@@ -33,12 +50,14 @@ impl Session {
         let id = nanoid!();
         let peer_connections: PeerConnections = DashMap::new();
         let peer_connection_queue: PeerConnectionQueue = VecDeque::new();
+        let video_source = PeerConnection::file_video_source();
 
         Self {
             id,
             name,
             peer_connections,
             peer_connection_queue,
+            video_source,
             state: State::Created,
             start_time: None,
             stop_time: None,
@@ -148,6 +167,18 @@ macro_rules! call_session {
             .get_mut(&$session_id)
             .ok_or_else(|| crate::error::ServerError::InvalidSessionError($session_id))?
             .$fn($($args),*)
+    };
+}
+
+#[macro_export]
+macro_rules! get_session_attribute {
+    ($shared_state:expr, $session_id:expr, $attr:ident) => {
+        &$shared_state
+            .data
+            .sessions
+            .get_mut(&$session_id)
+            .ok_or_else(|| crate::error::ServerError::InvalidSessionError($session_id))?
+            .$attr
     };
 }
 
