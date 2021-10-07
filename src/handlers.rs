@@ -102,15 +102,10 @@ impl WebRtc for SharedState {
         // create the peer connection
         let peer_connection = PeerConnection::new(
             &self.peer_connection_factory,
+            &get_session_attribute!(self, session_id.clone(), video_source),
             peer_connection_id.clone(),
             name.clone(),
         )?;
-
-        // add the video track
-        self.peer_connection_factory.create_and_add_video_track(
-            &peer_connection.webrtc_peer_connection,
-            &get_session_attribute!(self, session_id.clone(), video_source),
-        );
 
         // add the peer connection to the session
         call_session!(self, session_id, add_peer_connection, peer_connection).await?;

@@ -1,13 +1,12 @@
 use crate::error::{Result, ServerError};
 use crate::helpers::elapsed;
-use crate::peer_connection::{PeerConnection, PeerConnectionQueue};
+use crate::peer_connection::PeerConnection;
 use crate::stats::{get_stats, Stats};
 use core::fmt;
 use dashmap::DashMap;
 use libwebrtc::rust_video_track_source::RustTrackVideoSource;
 use log::info;
 use nanoid::nanoid;
-use std::collections::VecDeque;
 use std::time::SystemTime;
 
 pub(crate) type PeerConnections = DashMap<String, PeerConnection>;
@@ -23,7 +22,6 @@ pub(crate) struct Session {
     pub(crate) id: String,
     pub(crate) name: String,
     pub(crate) peer_connections: PeerConnections,
-    pub(crate) peer_connection_queue: PeerConnectionQueue,
     pub(crate) video_source: RustTrackVideoSource,
     pub(crate) state: State,
     pub(crate) start_time: Option<SystemTime>,
@@ -49,14 +47,12 @@ impl Session {
     pub(crate) fn new(name: String) -> Self {
         let id = nanoid!();
         let peer_connections: PeerConnections = DashMap::new();
-        let peer_connection_queue: PeerConnectionQueue = VecDeque::new();
         let video_source = PeerConnection::file_video_source();
 
         Self {
             id,
             name,
             peer_connections,
-            peer_connection_queue,
             video_source,
             state: State::Created,
             start_time: None,
@@ -76,8 +72,6 @@ impl Session {
         self.state = State::Started;
         self.start_time = Some(SystemTime::now());
 
-        // TODO: implement LibWebRtc here
-
         info!("Started session: {:?}", self);
 
         Ok(())
@@ -94,8 +88,6 @@ impl Session {
 
         self.state = State::Stopped;
         self.stop_time = Some(SystemTime::now());
-
-        // TODO: implement LibWebRtc here
 
         info!("stopped session: {:?}", self);
 
@@ -188,11 +180,9 @@ macro_rules! get_session_attribute {
 
 #[cfg(test)]
 mod tests {
-
-    use libwebrtc::peerconnection_factory::PeerConnectionFactory;
-
     use super::*;
     use crate::data::Data;
+    use crate::peer_connection::tests::peer_connection_params;
 
     #[test]
     fn it_adds_a_session() {
@@ -249,7 +239,7 @@ mod tests {
     #[tokio::test]
     async fn it_creates_a_peer_connection() {
         tracing_subscriber::fmt::init();
-        let factory = PeerConnectionFactory::new().unwrap();
+        let (factory, video_source) = peer_connection_params();
         let session = Session::new("New Session".into());
         let session_id = session.id.clone();
         let data = Data::new();
@@ -260,7 +250,9 @@ mod tests {
 
         let pc_id = nanoid!();
         {
-            let pc = PeerConnection::new(&factory.clone(), pc_id.clone(), "new".into()).unwrap();
+            let pc =
+                PeerConnection::new(&factory.clone(), &video_source, pc_id.clone(), "new".into())
+                    .unwrap();
             session.add_peer_connection(pc).await.unwrap();
 
             assert_eq!(session.peer_connections.get(&pc_id).unwrap().id, pc_id);

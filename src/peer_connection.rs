@@ -10,7 +10,6 @@ use libwebrtc::peerconnection_observer::{PeerConnectionObserver, PeerConnectionO
 use libwebrtc::rust_video_track_source::RustTrackVideoSource;
 use libwebrtc::stats_collector::{DummyRTCStatsCollector, RTCStatsCollectorCallback};
 use log::debug;
-use std::collections::VecDeque;
 use std::sync::mpsc::channel;
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc::{Receiver, Sender};
@@ -32,16 +31,6 @@ impl fmt::Debug for PeerConnection {
     }
 }
 
-#[derive(Debug)]
-pub(crate) struct PeerConnectionQueueInner {
-    pub(crate) id: String,
-    pub(crate) session_id: String,
-    pub(crate) name: String,
-}
-
-/// Queue to fill on the gRPC side to be consumed by the websocket
-pub(crate) type PeerConnectionQueue = VecDeque<PeerConnectionQueueInner>;
-
 #[derive(Clone)]
 pub(crate) struct ChannelPeerConnectionObserver {
     pub(crate) sender: Sender<String>,
@@ -60,6 +49,7 @@ impl PeerConnectionObserverTrait for ChannelPeerConnectionObserver {
 impl PeerConnection {
     pub(crate) fn new(
         peer_connection_factory: &PeerConnectionFactory,
+        video_source: &RustTrackVideoSource,
         id: String,
         name: String,
     ) -> Result<PeerConnection> {
@@ -73,6 +63,9 @@ impl PeerConnection {
             .create_peer_connection(&observer, Self::rtc_config())
             .map_err(|e| ServerError::CreatePeerConnectionError(e.to_string()))?;
         debug!("created peerconnection");
+
+        // add the video track
+        peer_connection_factory.create_and_add_video_track(&webrtc_peer_connection, &video_source);
 
         Ok(PeerConnection {
             id,
@@ -127,21 +120,27 @@ impl PeerConnection {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
 
     use super::*;
     use nanoid::nanoid;
 
+    pub(crate) fn peer_connection_params() -> (PeerConnectionFactory, RustTrackVideoSource) {
+        let factory = PeerConnectionFactory::new().unwrap();
+        let video_source = PeerConnection::file_video_source();
+        (factory, video_source)
+    }
+
     #[tokio::test]
     async fn it_creates_a_new_peer_connection() {
-        let factory = PeerConnectionFactory::new().unwrap();
-        PeerConnection::new(&factory, nanoid!(), "new".into()).unwrap();
+        let (factory, video_source) = peer_connection_params();
+        PeerConnection::new(&factory, &video_source, nanoid!(), "new".into()).unwrap();
     }
 
     #[tokio::test]
     async fn it_gets_stats_for_a_peer_connection() {
-        let factory = PeerConnectionFactory::new().unwrap();
-        let pc = PeerConnection::new(&factory, nanoid!(), "new".into()).unwrap();
+        let (factory, video_source) = peer_connection_params();
+        let pc = PeerConnection::new(&factory, &video_source, nanoid!(), "new".into()).unwrap();
         let _stats = pc.get_stats();
     }
 }

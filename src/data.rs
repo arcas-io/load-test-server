@@ -1,18 +1,13 @@
-use std::sync::Arc;
-
 use crate::error::Result;
-use crate::peer_connection::PeerConnectionQueue;
 use crate::session::Session;
 use dashmap::DashMap;
 use libwebrtc::peerconnection_factory::PeerConnectionFactory;
 use log::info;
-use tokio::sync::Mutex;
 
 #[derive(Debug)]
 pub(crate) struct SharedState {
     pub(crate) data: Data,
     pub(crate) peer_connection_factory: PeerConnectionFactory,
-    pub(crate) peer_connection_queue: Arc<Mutex<PeerConnectionQueue>>,
 }
 
 pub(crate) type Sessions = DashMap<String, Session>;

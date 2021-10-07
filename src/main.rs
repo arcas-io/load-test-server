@@ -13,9 +13,6 @@ use crate::error::ServerError;
 use crate::server::serve;
 use data::SharedState;
 use libwebrtc::peerconnection_factory::PeerConnectionFactory;
-use std::collections::VecDeque;
-use std::sync::Arc;
-use tokio::sync::Mutex;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -26,7 +23,6 @@ async fn main() -> Result<()> {
     let shared_state = SharedState {
         data: Data::new(),
         peer_connection_factory,
-        peer_connection_queue: Arc::from(Mutex::from(VecDeque::new())),
     };
 
     // run the gRPC server
