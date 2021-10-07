@@ -3,6 +3,7 @@ use crate::peer_connection::PeerConnectionQueueInner;
 use crate::server::webrtc;
 use crate::session::Session;
 use crate::ServerError;
+use crate::{call_session, peer_connection};
 use libwebrtc::sdp::SessionDescription;
 use log::info;
 use tonic::{Request, Response, Status};
@@ -48,14 +49,7 @@ impl WebRtc for SharedState {
         info!("{:?}", request);
 
         let session_id = request.into_inner().session_id;
-        {
-            let session = &mut *self
-                .data
-                .sessions
-                .get_mut(&session_id)
-                .ok_or(ServerError::InvalidSessionError(session_id))?;
-            session.start()?;
-        }
+        call_session!(self, session_id, start)?;
         let reply = Empty {};
 
         Ok(Response::new(reply))
@@ -68,14 +62,7 @@ impl WebRtc for SharedState {
         info!("{:?}", request);
 
         let session_id = request.into_inner().session_id;
-        {
-            let session = &mut *self
-                .data
-                .sessions
-                .get_mut(&session_id)
-                .ok_or(ServerError::InvalidSessionError(session_id))?;
-            session.stop()?;
-        }
+        call_session!(self, session_id, stop)?;
         let reply = webrtc::Empty {};
 
         Ok(Response::new(reply))
@@ -88,14 +75,7 @@ impl WebRtc for SharedState {
         info!("{:?}", request);
 
         let session_id = request.into_inner().session_id;
-        let stats = {
-            let session = &mut *self
-                .data
-                .sessions
-                .get_mut(&session_id)
-                .ok_or(ServerError::InvalidSessionError(session_id))?;
-            session.get_stats().await?
-        };
+        let stats = call_session!(self, session_id, get_stats).await?;
         let peer_connections = stats
             .peer_connections
             .into_iter()
@@ -117,19 +97,14 @@ impl WebRtc for SharedState {
 
         let request = request.into_inner();
         let CreatePeerConnectionRequest { name, session_id } = request;
-
-        // add to the peer connection queue, the websocket will consume this
-        // queue and create the peer connection in libwebrtc
         let peer_connection_id = nanoid::nanoid!();
-        let inner = PeerConnectionQueueInner {
-            id: peer_connection_id.clone(),
-            session_id,
-            name,
-        };
-        {
-            let mut pc_queue = self.peer_connection_queue.lock().await;
-            pc_queue.push_back(inner);
-        }
+        let peer_connection = crate::peer_connection::PeerConnection::new(
+            &self.peer_connection_factory,
+            peer_connection_id.clone(),
+            name.clone(),
+        )?;
+
+        call_session!(self, session_id, add_peer_connection, peer_connection).await?;
 
         let reply = webrtc::CreatePeerConnectionResponse { peer_connection_id };
 
