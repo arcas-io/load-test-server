@@ -5,7 +5,7 @@ use crate::session::Session;
 use crate::ServerError;
 use crate::{call_session, get_session_attribute};
 use libwebrtc::sdp::SessionDescription;
-use log::info;
+use log::{error, info};
 use tonic::{Request, Response, Status};
 use webrtc::web_rtc_server::WebRtc;
 use webrtc::{
@@ -119,6 +119,8 @@ impl WebRtc for SharedState {
         &self,
         request: Request<CreateSdpRequest>,
     ) -> Result<tonic::Response<CreateSdpResponse>, tonic::Status> {
+        info!("{:?}", request);
+
         let request = request.into_inner();
         let offer = {
             let session = &*(self
@@ -149,6 +151,8 @@ impl WebRtc for SharedState {
         &self,
         request: Request<CreateSdpRequest>,
     ) -> Result<tonic::Response<CreateSdpResponse>, tonic::Status> {
+        info!("{:?}", request);
+
         let request = request.into_inner();
         let answer = {
             let session = &*(self
@@ -179,6 +183,8 @@ impl WebRtc for SharedState {
         &self,
         request: Request<SetSdpRequest>,
     ) -> Result<tonic::Response<SetSdpResponse>, tonic::Status> {
+        info!("{:?}", request);
+
         let request = request.into_inner();
         let session_id = request.session_id.clone();
         let peer_connection_id = request.peer_connection_id.clone();
@@ -196,7 +202,10 @@ impl WebRtc for SharedState {
         peer_connection
             .webrtc_peer_connection
             .set_local_description(sdp)
-            .map_err(|_| tonic::Status::internal("could not set sdp"))?;
+            .map_err(|e| {
+                error!("{}", e);
+                tonic::Status::internal("could not set sdp")
+            })?;
 
         Ok(Response::new(SetSdpResponse {
             session_id,
@@ -209,6 +218,8 @@ impl WebRtc for SharedState {
         &self,
         request: Request<SetSdpRequest>,
     ) -> Result<tonic::Response<SetSdpResponse>, tonic::Status> {
+        info!("{:?}", request);
+
         let request = request.into_inner();
         let session_id = request.session_id.clone();
         let peer_connection_id = request.peer_connection_id.clone();
