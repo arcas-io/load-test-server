@@ -5,7 +5,7 @@ use crate::session::Session;
 use crate::ServerError;
 use crate::{call_session, get_session_attribute};
 use libwebrtc::sdp::SessionDescription;
-use log::{error, info};
+use log::info;
 use tonic::{Request, Response, Status};
 use webrtc::web_rtc_server::WebRtc;
 use webrtc::{
@@ -137,7 +137,7 @@ impl WebRtc for SharedState {
             peer_connection.webrtc_peer_connection.create_offer()
         };
         match offer {
-            Err(_) => Err(tonic::Status::internal("could not create offer")),
+            Err(e) => Err(ServerError::CouldNotCreateOffer(e.to_string()).into()),
             Ok(sdp) => Ok(Response::new(webrtc::CreateSdpResponse {
                 sdp: sdp.to_string(),
                 sdp_type: webrtc::SdpType::Offer.into(),
@@ -169,7 +169,7 @@ impl WebRtc for SharedState {
             peer_connection.webrtc_peer_connection.create_answer()
         };
         match answer {
-            Err(_) => Err(tonic::Status::internal("could not create answer")),
+            Err(e) => Err(ServerError::CouldNotCreateAnswer(e.to_string()).into()),
             Ok(sdp) => Ok(Response::new(webrtc::CreateSdpResponse {
                 sdp: sdp.to_string(),
                 session_id: request.session_id,
@@ -202,10 +202,7 @@ impl WebRtc for SharedState {
         peer_connection
             .webrtc_peer_connection
             .set_local_description(sdp)
-            .map_err(|e| {
-                error!("{}", e);
-                tonic::Status::internal("could not set sdp")
-            })?;
+            .map_err(|e| ServerError::CouldNotSetSdp(e.to_string()))?;
 
         Ok(Response::new(SetSdpResponse {
             session_id,
@@ -237,7 +234,7 @@ impl WebRtc for SharedState {
         peer_connection
             .webrtc_peer_connection
             .set_remote_description(sdp)
-            .map_err(|_| tonic::Status::internal("could not set sdp"))?;
+            .map_err(|e| ServerError::CouldNotSetSdp(e.to_string()))?;
 
         Ok(Response::new(SetSdpResponse {
             session_id,
