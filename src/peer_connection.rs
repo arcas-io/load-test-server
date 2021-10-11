@@ -9,6 +9,8 @@ use libwebrtc::peerconnection_factory::PeerConnectionFactory;
 use libwebrtc::peerconnection_observer::{PeerConnectionObserver, PeerConnectionObserverTrait};
 use libwebrtc::rust_video_track_source::RustTrackVideoSource;
 use libwebrtc::stats_collector::{DummyRTCStatsCollector, RTCStatsCollectorCallback};
+use libwebrtc::tracks::MediaStreamTrack;
+use libwebrtc::video_track::VideoTrack;
 use log::debug;
 use std::sync::mpsc::channel;
 use std::sync::{Arc, Mutex};
@@ -101,6 +103,21 @@ impl PeerConnection {
         receiver.recv().unwrap_or_default()
     }
 
+    pub(crate) fn add_track(
+        &self,
+        peer_connection_factory: &PeerConnectionFactory,
+        video_source: &RustTrackVideoSource,
+        label: String,
+    ) {
+        log::warn!("creating video track");
+        let track = peer_connection_factory
+            .create_video_track(video_source, label)
+            .unwrap();
+        let stream_ids = vec!["0".to_owned()];
+        log::warn!("adding video track to peer connection");
+        self.webrtc_peer_connection.add_track(track, stream_ids);
+    }
+
     // stream a pre-encoded file from gstreamer to avoid encoding overhead
     pub(crate) fn file_video_source() -> RustTrackVideoSource {
         let video_source = RustTrackVideoSource::default();
@@ -142,5 +159,12 @@ pub(crate) mod tests {
         let (factory, video_source) = peer_connection_params();
         let pc = PeerConnection::new(&factory, &video_source, nanoid!(), "new".into()).unwrap();
         let _stats = pc.get_stats();
+    }
+
+    #[test]
+    fn it_adds_a_track() {
+        let (factory, video_source) = peer_connection_params();
+        let pc = PeerConnection::new(&factory, &video_source, nanoid!(), "new".into()).unwrap();
+        let _ = pc.add_track(&factory, &video_source, "Testlabel".into());
     }
 }

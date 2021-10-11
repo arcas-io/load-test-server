@@ -15,6 +15,7 @@ service WebRtc {
   rpc CreateAnswer(CreateSDPRequest) returns (CreateSDPResponse);
   rpc SetLocalDescription(SetSDPRequest) returns (SetSDPResponse);
   rpc SetRemoteDescription(SetSDPRequest) returns (SetSDPResponse);
+  rpc AddTrack(AddTrackRequest) returns (Empty);
 }
 
 // Reusable empty message
@@ -91,3 +92,11 @@ message CreateSDPRequest { string session_id = 1; string peer_connection_id = 2;
 message CreateSDPResponse { string session_id = 1; string peer_connection_id = 2; string sdp = 3; SDPType sdp_type = 4; } 
 message SetSDPRequest { string session_id = 1; string peer_connection_id = 2; string sdp = 3; SDPType sdp_type = 4; }
 message SetSDPResponse { string session_id = 1; string peer_connection_id = 2; bool success = 3; }
+
+message AddTrackRequest {
+  string session_id = 1; 
+  string peer_connection_id = 2;
+  string track_id = 3;
+  string track_label = 4;
+}
+// message AddTrackResponse []

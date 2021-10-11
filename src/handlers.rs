@@ -1,5 +1,5 @@
 use crate::data::SharedState;
-use crate::peer_connection::PeerConnection;
+use crate::peer_connection::{self, PeerConnection};
 use crate::server::webrtc;
 use crate::session::Session;
 use crate::ServerError;
@@ -9,9 +9,9 @@ use log::info;
 use tonic::{Request, Response, Status};
 use webrtc::web_rtc_server::WebRtc;
 use webrtc::{
-    CreatePeerConnectionRequest, CreatePeerConnectionResponse, CreateSdpRequest, CreateSdpResponse,
-    CreateSessionRequest, CreateSessionResponse, Empty, GetStatsRequest, GetStatsResponse,
-    SetSdpRequest, SetSdpResponse, StartSessionRequest, StopSessionRequest,
+    AddTrackRequest, CreatePeerConnectionRequest, CreatePeerConnectionResponse, CreateSdpRequest,
+    CreateSdpResponse, CreateSessionRequest, CreateSessionResponse, Empty, GetStatsRequest,
+    GetStatsResponse, SetSdpRequest, SetSdpResponse, StartSessionRequest, StopSessionRequest,
 };
 
 impl From<webrtc::SdpType> for libwebrtc::sdp::SdpType {
@@ -241,6 +241,47 @@ impl WebRtc for SharedState {
             peer_connection_id,
             success: true,
         }))
+    }
+
+    async fn add_track(
+        &self,
+        request: tonic::Request<AddTrackRequest>,
+    ) -> Result<tonic::Response<Empty>, tonic::Status> {
+        info!("{:?}", request);
+
+        let request = request.into_inner();
+        let AddTrackRequest {
+            session_id,
+            peer_connection_id,
+            track_id: _track_id,
+            track_label,
+        } = request;
+        let session = &*(self
+            .data
+            .sessions
+            .get(&session_id.clone())
+            .ok_or_else(|| ServerError::InvalidSessionError(session_id.clone()))?);
+
+        let peer_connection = &mut *session
+            .peer_connections
+            .get_mut(&peer_connection_id)
+            .ok_or_else(|| ServerError::InvalidPeerConnection(peer_connection_id.clone()))?;
+
+        // let video_source = &self
+        //     .data
+        //     .sessions
+        //     .get_mut(&session_id.clone())
+        //     .ok_or_else(|| crate::error::ServerError::InvalidSessionError(session_id.clone()))?
+        //     .video_source;
+
+        // TODO: do we need to create a video source for each track addition?
+        let video_source = PeerConnection::file_video_source();
+
+        peer_connection.add_track(&self.peer_connection_factory, &video_source, track_label);
+
+        let reply = Empty {};
+
+        Ok(Response::new(reply))
     }
 }
 
