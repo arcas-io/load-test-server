@@ -82,6 +82,7 @@ impl PeerConnection {
 
     fn rtc_config() -> RTCConfiguration {
         RTCConfiguration {
+            // enable_dtls_srtp: true,
             ice_servers: vec![IceServer {
                 username: None,
                 password: None,
@@ -217,6 +218,41 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn it_creates_an_offer() {
+        let (factory, video_source) = peer_connection_params();
+        let mut pc = PeerConnection::new(&factory, &video_source, nanoid!(), "new".into()).unwrap();
+        pc.create_offer().unwrap();
+    }
+
+    #[test]
+    fn it_creates_an_answer() {
+        let (factory, video_source) = peer_connection_params();
+        let mut pc = PeerConnection::new(&factory, &video_source, nanoid!(), "new".into()).unwrap();
+        let offer = pc.create_offer().unwrap();
+        pc.set_remote_description(offer.get_type().unwrap(), offer.to_string())
+            .unwrap();
+        pc.create_answer().unwrap();
+    }
+
+    #[test]
+    fn it_sets_local_description() {
+        let (factory, video_source) = peer_connection_params();
+        let mut pc = PeerConnection::new(&factory, &video_source, nanoid!(), "new".into()).unwrap();
+        let offer = pc.create_offer().unwrap();
+        pc.set_local_description(offer.get_type().unwrap(), offer.to_string())
+            .unwrap();
+    }
+
+    #[test]
+    fn it_sets_remote_description() {
+        let (factory, video_source) = peer_connection_params();
+        let mut pc = PeerConnection::new(&factory, &video_source, nanoid!(), "new".into()).unwrap();
+        let offer = pc.create_offer().unwrap();
+        pc.set_remote_description(offer.get_type().unwrap(), offer.to_string())
+            .unwrap();
+    }
+
+    #[test]
     fn it_adds_a_track() {
         let (factory, video_source) = peer_connection_params();
         let pc = PeerConnection::new(&factory, &video_source, nanoid!(), "new".into()).unwrap();
@@ -230,4 +266,11 @@ pub(crate) mod tests {
         let pc = PeerConnection::new(&factory, &video_source, nanoid!(), "new".into()).unwrap();
         pc.add_transceiver().unwrap();
     }
+
+    // #[test]
+    // fn it_does_all_the_things() {
+    //     let (factory, video_source) = peer_connection_params();
+    //     let pc = PeerConnection::new(&factory, &video_source, nanoid!(), "new".into()).unwrap();
+    //     pc.add_transceiver().unwrap();
+    // }
 }
