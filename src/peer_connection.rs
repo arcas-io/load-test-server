@@ -124,7 +124,7 @@ impl PeerConnection {
     }
 
     pub(crate) fn set_local_description(&mut self, sdp_type: SdpType, sdp: String) -> Result<()> {
-        let description = SessionDescription::from_string(sdp_type.into(), sdp)
+        let description = SessionDescription::from_string(sdp_type, sdp)
             .map_err(|e| ServerError::CouldNotParseSdp(e.to_string()))?;
         self.webrtc_peer_connection
             .set_local_description(description)
@@ -134,7 +134,7 @@ impl PeerConnection {
     }
 
     pub(crate) fn set_remote_description(&mut self, sdp_type: SdpType, sdp: String) -> Result<()> {
-        let description = SessionDescription::from_string(sdp_type.into(), sdp)
+        let description = SessionDescription::from_string(sdp_type, sdp)
             .map_err(|e| ServerError::CouldNotParseSdp(e.to_string()))?;
         self.webrtc_peer_connection
             .set_remote_description(description)
@@ -213,20 +213,21 @@ pub(crate) mod tests {
     async fn it_gets_stats_for_a_peer_connection() {
         let (factory, video_source) = peer_connection_params();
         let pc = PeerConnection::new(&factory, &video_source, nanoid!(), "new".into()).unwrap();
-        let _stats = pc.get_stats();
+        pc.get_stats();
     }
 
     #[test]
     fn it_adds_a_track() {
         let (factory, video_source) = peer_connection_params();
         let pc = PeerConnection::new(&factory, &video_source, nanoid!(), "new".into()).unwrap();
-        let _ = pc.add_track(&factory, &video_source, "Testlabel".into());
+        pc.add_track(&factory, &video_source, "Testlabel".into())
+            .unwrap();
     }
 
     #[test]
     fn it_adds_a_transceiver() {
         let (factory, video_source) = peer_connection_params();
         let pc = PeerConnection::new(&factory, &video_source, nanoid!(), "new".into()).unwrap();
-        let _ = pc.add_transceiver();
+        pc.add_transceiver().unwrap();
     }
 }
