@@ -8,7 +8,7 @@ service WebRtc {
   rpc StartSession(StartSessionRequest) returns (Empty);
   rpc StopSession(StopSessionRequest) returns (Empty);
   rpc GetStats(GetStatsRequest) returns (GetStatsResponse);
-    rpc CreatePeerConnection(CreatePeerConnectionRequest)
+  rpc CreatePeerConnection(CreatePeerConnectionRequest)
       returns (CreatePeerConnectionResponse);
   rpc CreateOffer(CreateSDPRequest) returns (CreateSDPResponse);
   rpc CreateAnswer(CreateSDPRequest) returns (CreateSDPResponse);

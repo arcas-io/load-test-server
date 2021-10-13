@@ -5,6 +5,8 @@ use crate::session::Session;
 use crate::ServerError;
 use crate::{call_peer_connection, call_session, get_session_attribute};
 use log::info;
+use std::fmt::Debug;
+use std::result::Result;
 use tonic::{Request, Response, Status};
 use webrtc::web_rtc_server::WebRtc;
 use webrtc::{
@@ -13,6 +15,17 @@ use webrtc::{
     CreateSessionResponse, Empty, GetStatsRequest, GetStatsResponse, SetSdpRequest, SetSdpResponse,
     StartSessionRequest, StopSessionRequest,
 };
+
+fn requester<T: Debug>(tag: &str, request: Request<T>) -> T {
+    let request = request.into_inner();
+    info!("Request({}): {:?}", tag, request);
+    request
+}
+
+fn responder<T: Debug>(tag: &str, response: T) -> Result<Response<T>, Status> {
+    info!("Response({}): {:?}", tag, response);
+    Ok(Response::new(response))
+}
 
 impl From<webrtc::SdpType> for libwebrtc::sdp::SdpType {
     fn from(sdp_type: webrtc::SdpType) -> Self {
@@ -30,51 +43,43 @@ impl WebRtc for SharedState {
     async fn create_session(
         &self,
         request: Request<CreateSessionRequest>,
-    ) -> std::result::Result<Response<CreateSessionResponse>, Status> {
-        info!("{:?}", request);
-
-        let name = request.into_inner().name;
+    ) -> Result<Response<CreateSessionResponse>, Status> {
+        let name = requester("create_session", request).name;
         let session = Session::new(name);
         let session_id = session.id.clone();
         self.data.add_session(session)?;
         let reply = webrtc::CreateSessionResponse { session_id };
 
-        Ok(Response::new(reply))
+        responder("create_session", reply)
     }
 
     async fn start_session(
         &self,
         request: Request<StartSessionRequest>,
-    ) -> std::result::Result<Response<Empty>, Status> {
-        info!("{:?}", request);
-
-        let session_id = request.into_inner().session_id;
+    ) -> Result<Response<Empty>, Status> {
+        let session_id = requester("start_session", request).session_id;
         call_session!(self, session_id, start)?;
         let reply = Empty {};
 
-        Ok(Response::new(reply))
+        responder("start_session", reply)
     }
 
     async fn stop_session(
         &self,
         request: Request<StopSessionRequest>,
-    ) -> std::result::Result<Response<Empty>, Status> {
-        info!("{:?}", request);
-
-        let session_id = request.into_inner().session_id;
+    ) -> Result<Response<Empty>, Status> {
+        let session_id = requester("stop_session", request).session_id;
         call_session!(self, session_id, stop)?;
         let reply = webrtc::Empty {};
 
-        Ok(Response::new(reply))
+        responder("stop_session", reply)
     }
 
     async fn get_stats(
         &self,
         request: Request<GetStatsRequest>,
-    ) -> std::result::Result<Response<GetStatsResponse>, Status> {
-        info!("{:?}", request);
-
-        let session_id = request.into_inner().session_id;
+    ) -> Result<Response<GetStatsResponse>, Status> {
+        let session_id = requester("get_stats", request).session_id;
         let stats = call_session!(self, session_id, get_stats).await?;
         let peer_connections = stats
             .peer_connections
@@ -86,16 +91,15 @@ impl WebRtc for SharedState {
             peer_connections,
         };
 
-        Ok(Response::new(reply))
+        responder("get_stats", reply)
     }
 
     async fn create_peer_connection(
         &self,
         request: Request<CreatePeerConnectionRequest>,
-    ) -> std::result::Result<Response<CreatePeerConnectionResponse>, Status> {
-        info!("{:?}", request);
-
-        let CreatePeerConnectionRequest { name, session_id } = request.into_inner();
+    ) -> Result<Response<CreatePeerConnectionResponse>, Status> {
+        let CreatePeerConnectionRequest { name, session_id } =
+            requester("create_peer_connection", request);
         let peer_connection_id = nanoid::nanoid!();
 
         // create the peer connection
@@ -111,16 +115,14 @@ impl WebRtc for SharedState {
 
         let reply = webrtc::CreatePeerConnectionResponse { peer_connection_id };
 
-        Ok(Response::new(reply))
+        responder("create_peer_connection", reply)
     }
 
     async fn create_offer(
         &self,
         request: Request<CreateSdpRequest>,
     ) -> Result<tonic::Response<CreateSdpResponse>, tonic::Status> {
-        info!("{:?}", request);
-
-        let request = request.into_inner();
+        let request = requester("create_offer", request);
         let session_id = request.session_id;
         let peer_connection_id = request.peer_connection_id;
 
@@ -133,16 +135,14 @@ impl WebRtc for SharedState {
             peer_connection_id,
         };
 
-        Ok(Response::new(reply))
+        responder("create_offer", reply)
     }
 
     async fn create_answer(
         &self,
         request: Request<CreateSdpRequest>,
     ) -> Result<tonic::Response<CreateSdpResponse>, tonic::Status> {
-        info!("{:?}", request);
-
-        let request = request.into_inner();
+        let request = requester("create_answer", request);
         let session_id = request.session_id;
         let peer_connection_id = request.peer_connection_id;
 
@@ -155,16 +155,14 @@ impl WebRtc for SharedState {
             peer_connection_id,
         };
 
-        Ok(Response::new(reply))
+        responder("create_answer", reply)
     }
 
     async fn set_local_description(
         &self,
         request: Request<SetSdpRequest>,
     ) -> Result<tonic::Response<SetSdpResponse>, tonic::Status> {
-        info!("{:?}", request);
-
-        let request = request.into_inner();
+        let request = requester("set_local_description", request);
         let sdp_type = request.sdp_type();
         let sdp = request.sdp;
         let session_id = request.session_id;
@@ -185,16 +183,14 @@ impl WebRtc for SharedState {
             success: true,
         };
 
-        Ok(Response::new(reply))
+        responder("set_local_description", reply)
     }
 
     async fn set_remote_description(
         &self,
         request: Request<SetSdpRequest>,
     ) -> Result<tonic::Response<SetSdpResponse>, tonic::Status> {
-        info!("{:?}", request);
-
-        let request = request.into_inner();
+        let request = requester("set_remote_description", request);
         let sdp_type = request.sdp_type();
         let sdp = request.sdp;
         let session_id = request.session_id;
@@ -215,16 +211,14 @@ impl WebRtc for SharedState {
             success: true,
         };
 
-        Ok(Response::new(reply))
+        responder("set_remote_description", reply)
     }
 
     async fn add_track(
         &self,
         request: tonic::Request<AddTrackRequest>,
     ) -> Result<tonic::Response<Empty>, tonic::Status> {
-        info!("{:?}", request);
-
-        let request = request.into_inner();
+        let request = requester("add_track", request);
         let session_id = request.session_id;
         let peer_connection_id = request.peer_connection_id;
         let _track_id = request.track_id;
@@ -252,16 +246,14 @@ impl WebRtc for SharedState {
 
         let reply = Empty {};
 
-        Ok(Response::new(reply))
+        responder("add_track", reply)
     }
 
     async fn add_transceiver(
         &self,
         request: tonic::Request<AddTransceiverRequest>,
     ) -> Result<tonic::Response<Empty>, tonic::Status> {
-        info!("{:?}", request);
-
-        let request = request.into_inner();
+        let request = requester("add_transceiver", request);
         let session_id = request.session_id;
         let peer_connection_id = request.peer_connection_id;
 
@@ -269,7 +261,7 @@ impl WebRtc for SharedState {
 
         let reply = Empty {};
 
-        Ok(Response::new(reply))
+        responder("add_transceiver", reply)
     }
 }
 

@@ -125,6 +125,7 @@ impl PeerConnection {
     }
 
     pub(crate) fn set_local_description(&mut self, sdp_type: SdpType, sdp: String) -> Result<()> {
+        debug!("Stting local description: {:?} {:?}", sdp_type, sdp);
         let description = SessionDescription::from_string(sdp_type, sdp)
             .map_err(|e| ServerError::CouldNotParseSdp(e.to_string()))?;
         self.webrtc_peer_connection
