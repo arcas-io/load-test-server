@@ -1,17 +1,17 @@
 use crate::data::SharedState;
-use crate::peer_connection::{self, PeerConnection};
+use crate::peer_connection::PeerConnection;
 use crate::server::webrtc;
 use crate::session::Session;
 use crate::ServerError;
-use crate::{call_session, get_session_attribute};
-use libwebrtc::sdp::SessionDescription;
+use crate::{call_peer_connection, call_session, get_session_attribute};
 use log::info;
 use tonic::{Request, Response, Status};
 use webrtc::web_rtc_server::WebRtc;
 use webrtc::{
-    AddTrackRequest, CreatePeerConnectionRequest, CreatePeerConnectionResponse, CreateSdpRequest,
-    CreateSdpResponse, CreateSessionRequest, CreateSessionResponse, Empty, GetStatsRequest,
-    GetStatsResponse, SetSdpRequest, SetSdpResponse, StartSessionRequest, StopSessionRequest,
+    AddTrackRequest, AddTransceiverRequest, CreatePeerConnectionRequest,
+    CreatePeerConnectionResponse, CreateSdpRequest, CreateSdpResponse, CreateSessionRequest,
+    CreateSessionResponse, Empty, GetStatsRequest, GetStatsResponse, SetSdpRequest, SetSdpResponse,
+    StartSessionRequest, StopSessionRequest,
 };
 
 impl From<webrtc::SdpType> for libwebrtc::sdp::SdpType {
@@ -95,8 +95,7 @@ impl WebRtc for SharedState {
     ) -> std::result::Result<Response<CreatePeerConnectionResponse>, Status> {
         info!("{:?}", request);
 
-        let request = request.into_inner();
-        let CreatePeerConnectionRequest { name, session_id } = request;
+        let CreatePeerConnectionRequest { name, session_id } = request.into_inner();
         let peer_connection_id = nanoid::nanoid!();
 
         // create the peer connection
@@ -122,29 +121,19 @@ impl WebRtc for SharedState {
         info!("{:?}", request);
 
         let request = request.into_inner();
-        let offer = {
-            let session = &*(self
-                .data
-                .sessions
-                .get(&request.session_id)
-                .ok_or_else(|| ServerError::InvalidSessionError(request.session_id.clone()))?);
-            let peer_connection = &mut *session
-                .peer_connections
-                .get_mut(&request.peer_connection_id)
-                .ok_or_else(|| {
-                    ServerError::InvalidPeerConnection(request.peer_connection_id.clone())
-                })?;
-            peer_connection.webrtc_peer_connection.create_offer()
+        let session_id = request.session_id;
+        let peer_connection_id = request.peer_connection_id;
+
+        let sdp = call_peer_connection!(self, session_id, peer_connection_id, create_offer)?;
+
+        let reply = CreateSdpResponse {
+            sdp: sdp.to_string(),
+            sdp_type: webrtc::SdpType::Offer.into(),
+            session_id,
+            peer_connection_id,
         };
-        match offer {
-            Err(e) => Err(ServerError::CouldNotCreateOffer(e.to_string()).into()),
-            Ok(sdp) => Ok(Response::new(webrtc::CreateSdpResponse {
-                sdp: sdp.to_string(),
-                sdp_type: webrtc::SdpType::Offer.into(),
-                session_id: request.session_id,
-                peer_connection_id: request.peer_connection_id,
-            })),
-        }
+
+        Ok(Response::new(reply))
     }
 
     async fn create_answer(
@@ -154,29 +143,19 @@ impl WebRtc for SharedState {
         info!("{:?}", request);
 
         let request = request.into_inner();
-        let answer = {
-            let session = &*(self
-                .data
-                .sessions
-                .get(&request.session_id)
-                .ok_or_else(|| ServerError::InvalidSessionError(request.session_id.clone()))?);
-            let peer_connection = &mut *session
-                .peer_connections
-                .get_mut(&request.peer_connection_id)
-                .ok_or_else(|| {
-                    ServerError::InvalidPeerConnection(request.peer_connection_id.clone())
-                })?;
-            peer_connection.webrtc_peer_connection.create_answer()
+        let session_id = request.session_id;
+        let peer_connection_id = request.peer_connection_id;
+
+        let sdp = call_peer_connection!(self, session_id, peer_connection_id, create_answer)?;
+
+        let reply = CreateSdpResponse {
+            sdp: sdp.to_string(),
+            sdp_type: webrtc::SdpType::Answer.into(),
+            session_id,
+            peer_connection_id,
         };
-        match answer {
-            Err(e) => Err(ServerError::CouldNotCreateAnswer(e.to_string()).into()),
-            Ok(sdp) => Ok(Response::new(webrtc::CreateSdpResponse {
-                sdp: sdp.to_string(),
-                session_id: request.session_id,
-                peer_connection_id: request.peer_connection_id,
-                sdp_type: webrtc::SdpType::Answer.into(),
-            })),
-        }
+
+        Ok(Response::new(reply))
     }
 
     async fn set_local_description(
@@ -186,29 +165,27 @@ impl WebRtc for SharedState {
         info!("{:?}", request);
 
         let request = request.into_inner();
-        let session_id = request.session_id.clone();
-        let peer_connection_id = request.peer_connection_id.clone();
-        let sdp = SessionDescription::from_string(request.sdp_type().into(), request.sdp)
-            .map_err(|_| tonic::Status::invalid_argument("could not parse sdp"))?;
-        let session = &*(self
-            .data
-            .sessions
-            .get(&session_id)
-            .ok_or_else(|| ServerError::InvalidSessionError(session_id.clone()))?);
-        let peer_connection = &mut *session
-            .peer_connections
-            .get_mut(&peer_connection_id)
-            .ok_or_else(|| ServerError::InvalidPeerConnection(peer_connection_id.clone()))?;
-        peer_connection
-            .webrtc_peer_connection
-            .set_local_description(sdp)
-            .map_err(|e| ServerError::CouldNotSetSdp(e.to_string()))?;
+        let sdp_type = request.sdp_type();
+        let sdp = request.sdp;
+        let session_id = request.session_id;
+        let peer_connection_id = request.peer_connection_id;
 
-        Ok(Response::new(SetSdpResponse {
+        call_peer_connection!(
+            self,
+            session_id,
+            peer_connection_id,
+            set_local_description,
+            sdp_type.into(),
+            sdp
+        )?;
+
+        let reply = SetSdpResponse {
             session_id,
             peer_connection_id,
             success: true,
-        }))
+        };
+
+        Ok(Response::new(reply))
     }
 
     async fn set_remote_description(
@@ -218,29 +195,27 @@ impl WebRtc for SharedState {
         info!("{:?}", request);
 
         let request = request.into_inner();
-        let session_id = request.session_id.clone();
-        let peer_connection_id = request.peer_connection_id.clone();
-        let sdp = SessionDescription::from_string(request.sdp_type().into(), request.sdp)
-            .map_err(|_| tonic::Status::invalid_argument("could not parse sdp"))?;
-        let session = &*(self
-            .data
-            .sessions
-            .get(&session_id.clone())
-            .ok_or_else(|| ServerError::InvalidSessionError(session_id.clone()))?);
-        let peer_connection = &mut *session
-            .peer_connections
-            .get_mut(&peer_connection_id)
-            .ok_or_else(|| ServerError::InvalidPeerConnection(peer_connection_id.clone()))?;
-        peer_connection
-            .webrtc_peer_connection
-            .set_remote_description(sdp)
-            .map_err(|e| ServerError::CouldNotSetSdp(e.to_string()))?;
+        let sdp_type = request.sdp_type();
+        let sdp = request.sdp;
+        let session_id = request.session_id;
+        let peer_connection_id = request.peer_connection_id;
 
-        Ok(Response::new(SetSdpResponse {
+        call_peer_connection!(
+            self,
+            session_id,
+            peer_connection_id,
+            set_remote_description,
+            sdp_type.into(),
+            sdp
+        )?;
+
+        let reply = SetSdpResponse {
             session_id,
             peer_connection_id,
             success: true,
-        }))
+        };
+
+        Ok(Response::new(reply))
     }
 
     async fn add_track(
@@ -250,22 +225,10 @@ impl WebRtc for SharedState {
         info!("{:?}", request);
 
         let request = request.into_inner();
-        let AddTrackRequest {
-            session_id,
-            peer_connection_id,
-            track_id: _track_id,
-            track_label,
-        } = request;
-        let session = &*(self
-            .data
-            .sessions
-            .get(&session_id.clone())
-            .ok_or_else(|| ServerError::InvalidSessionError(session_id.clone()))?);
-
-        let peer_connection = &mut *session
-            .peer_connections
-            .get_mut(&peer_connection_id)
-            .ok_or_else(|| ServerError::InvalidPeerConnection(peer_connection_id.clone()))?;
+        let session_id = request.session_id;
+        let peer_connection_id = request.peer_connection_id;
+        let _track_id = request.track_id;
+        let track_label = request.track_label;
 
         // let video_source = &self
         //     .data
@@ -277,7 +240,32 @@ impl WebRtc for SharedState {
         // TODO: do we need to create a video source for each track addition?
         let video_source = PeerConnection::file_video_source();
 
-        peer_connection.add_track(&self.peer_connection_factory, &video_source, track_label);
+        call_peer_connection!(
+            self,
+            session_id,
+            peer_connection_id,
+            add_track,
+            &self.peer_connection_factory,
+            &video_source,
+            track_label
+        )?;
+
+        let reply = Empty {};
+
+        Ok(Response::new(reply))
+    }
+
+    async fn add_transceiver(
+        &self,
+        request: tonic::Request<AddTransceiverRequest>,
+    ) -> Result<tonic::Response<Empty>, tonic::Status> {
+        info!("{:?}", request);
+
+        let request = request.into_inner();
+        let session_id = request.session_id;
+        let peer_connection_id = request.peer_connection_id;
+
+        call_peer_connection!(self, session_id, peer_connection_id, add_transceiver)?;
 
         let reply = Empty {};
 

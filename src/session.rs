@@ -160,8 +160,8 @@ macro_rules! call_session {
         $shared_state
             .data
             .sessions
-            .get_mut(&$session_id)
-            .ok_or_else(|| crate::error::ServerError::InvalidSessionError($session_id))?
+            .get_mut(&$session_id.clone())
+            .ok_or_else(|| crate::error::ServerError::InvalidSessionError($session_id.clone()))?
             .$fn($($args),*)
     };
 }
@@ -175,6 +175,21 @@ macro_rules! get_session_attribute {
             .get_mut(&$session_id)
             .ok_or_else(|| crate::error::ServerError::InvalidSessionError($session_id))?
             .$attr
+    };
+}
+
+#[macro_export]
+macro_rules! call_peer_connection {
+    ($shared_state:expr, $session_id:expr, $peer_connection_id:tt, $fn:ident $(, $args:expr)*) => {
+        $shared_state
+            .data
+            .sessions
+            .get(&$session_id)
+            .ok_or_else(|| ServerError::InvalidSessionError($session_id.clone()))?
+                .peer_connections
+                .get_mut(&$peer_connection_id)
+                .ok_or_else(|| ServerError::InvalidPeerConnection($peer_connection_id.clone()))?
+                .$fn($($args),*)
     };
 }
 

@@ -17,6 +17,15 @@ pub enum ServerError {
     #[error("Could not create offer: {0}")]
     CouldNotCreateOffer(String),
 
+    #[error("Could not create track: {0}")]
+    CouldNotCreateTrack(String),
+
+    #[error("Could not create transceiver: {0}")]
+    CouldNotAddTransceiver(String),
+
+    #[error("Could not parse SDP: {0}")]
+    CouldNotParseSdp(String),
+
     #[error("Could not set SDP: {0}")]
     CouldNotSetSdp(String),
 

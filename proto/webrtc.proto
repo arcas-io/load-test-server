@@ -8,14 +8,14 @@ service WebRtc {
   rpc StartSession(StartSessionRequest) returns (Empty);
   rpc StopSession(StopSessionRequest) returns (Empty);
   rpc GetStats(GetStatsRequest) returns (GetStatsResponse);
-  rpc CreatePeerConnection(CreatePeerConnectionRequest)
+    rpc CreatePeerConnection(CreatePeerConnectionRequest)
       returns (CreatePeerConnectionResponse);
-  // PeerConnection methods
   rpc CreateOffer(CreateSDPRequest) returns (CreateSDPResponse);
   rpc CreateAnswer(CreateSDPRequest) returns (CreateSDPResponse);
   rpc SetLocalDescription(SetSDPRequest) returns (SetSDPResponse);
   rpc SetRemoteDescription(SetSDPRequest) returns (SetSDPResponse);
   rpc AddTrack(AddTrackRequest) returns (Empty);
+  rpc AddTransceiver(AddTransceiverRequest) returns (Empty);
 }
 
 // Reusable empty message
@@ -100,3 +100,8 @@ message AddTrackRequest {
   string track_label = 4;
 }
 // message AddTrackResponse []
+
+message AddTransceiverRequest {
+  string session_id = 1; 
+  string peer_connection_id = 2;
+}
