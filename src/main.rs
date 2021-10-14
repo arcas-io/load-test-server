@@ -6,6 +6,7 @@ mod peer_connection;
 mod server;
 mod session;
 mod stats;
+mod metrics;
 
 use crate::data::Data;
 use crate::error::Result;
@@ -16,6 +17,8 @@ use libwebrtc::peerconnection_factory::PeerConnectionFactory;
 use std::collections::VecDeque;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+
+extern crate prometheus;
 
 #[tokio::main]
 async fn main() -> Result<()> {

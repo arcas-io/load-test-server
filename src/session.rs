@@ -225,7 +225,7 @@ mod tests {
 
         let pc_id = nanoid!();
         {
-            let pc = PeerConnection::new(&factory.clone(), pc_id.clone(), "new".into()).unwrap();
+            let pc = PeerConnection::new(&factory.clone(), pc_id.clone(), session_id, "new".into()).unwrap();
             session.add_peer_connection(pc).await.unwrap();
 
             assert_eq!(session.peer_connections.get(&pc_id).unwrap().id, pc_id);

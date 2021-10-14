@@ -1,4 +1,5 @@
 use crate::error::{Result, ServerError};
+use crate::metrics::MetricsStatsCollectorCallback;
 
 use core::fmt;
 use libwebrtc::ffi::stats_collector::Rs_VideoSenderStats;
@@ -17,6 +18,7 @@ use tracing::{info, warn};
 
 pub(crate) struct PeerConnection {
     pub(crate) id: String,
+    pub(crate) session_id: String,
     pub(crate) name: String,
     pub(crate) webrtc_peer_connection: WebRtcPeerConnection,
     pub(crate) observer: PeerConnectionObserver,
@@ -61,6 +63,7 @@ impl PeerConnection {
     pub(crate) fn new(
         peer_connection_factory: &PeerConnectionFactory,
         id: String,
+        session_id: String,
         name: String,
     ) -> Result<PeerConnection> {
         debug!("Creating observer");
@@ -76,6 +79,7 @@ impl PeerConnection {
 
         Ok(PeerConnection {
             id,
+            session_id,
             name,
             webrtc_peer_connection,
             observer,
@@ -107,24 +111,65 @@ impl PeerConnection {
 
         stats
     }
+
+    pub(crate) fn export_stats(&self) {
+        let collector = MetricsStatsCollectorCallback::new(self.id.clone(), self.session_id.clone());
+        let _ = self.webrtc_peer_connection.get_stats(& (collector.into()));
+    }
 }
 
 #[cfg(test)]
 mod tests {
 
     use super::*;
+    use libwebrtc::rust_video_track_source::RustTrackVideoSource;
     use nanoid::nanoid;
 
     #[tokio::test]
     async fn it_creates_a_new_peer_connection() {
         let factory = PeerConnectionFactory::new().unwrap();
-        PeerConnection::new(&factory, nanoid!(), "new".into()).unwrap();
+        PeerConnection::new(&factory, nanoid!(),"session_id".to_owned(),  "new".into()).unwrap();
     }
 
     #[tokio::test]
     async fn it_gets_stats_for_a_peer_connection() {
         let factory = PeerConnectionFactory::new().unwrap();
-        let pc = PeerConnection::new(&factory, nanoid!(), "new".into()).unwrap();
+        let pc = PeerConnection::new(&factory, nanoid!(),"session_id".to_owned(),  "new".into()).unwrap();
         let _stats = pc.get_stats();
+    }
+
+    #[tokio::test]
+    async fn it_exports_stats_for_a_peer_connection() {
+        let factory = PeerConnectionFactory::new().unwrap();
+        let source = RustTrackVideoSource::default();
+        source.start_gstreamer_thread(720, 480);
+        let mut pc = PeerConnection::new(&factory, nanoid!(),"session_id".to_owned(),  "new".into()).unwrap();
+        let track = factory.create_video_track(&source, "video".to_owned()).unwrap();
+
+        pc.webrtc_peer_connection.add_track(track, vec!["0".to_owned()]);
+        let offer = pc.webrtc_peer_connection.create_offer().unwrap();
+        pc.webrtc_peer_connection.set_local_description(offer.clone()).unwrap();
+
+        let mut pc_recv = PeerConnection::new(&factory, nanoid!(),"session_id".to_owned(),  "new".into()).unwrap();
+        pc_recv.webrtc_peer_connection.set_remote_description(offer).unwrap();
+        let answer = pc_recv.webrtc_peer_connection.create_answer().unwrap();
+
+        pc_recv.webrtc_peer_connection.set_local_description(answer.clone()).unwrap();
+
+        pc.webrtc_peer_connection.set_remote_description(answer).unwrap();
+
+        let pc_cand = pc.receiver.recv().await.unwrap();
+        let pc_recv_cand = pc_recv.receiver.recv().await.unwrap(); 
+
+        pc.webrtc_peer_connection.add_ice_candidate_from_sdp(pc_recv_cand).unwrap();
+        pc_recv.webrtc_peer_connection.add_ice_candidate_from_sdp(pc_cand).unwrap();
+
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+        pc.export_stats();
+        pc_recv.export_stats();
+        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+        let metrics = prometheus::gather();
+        // log metrics
+        metrics.iter().for_each(|m| log::debug!("{:?}", m));
     }
 }
