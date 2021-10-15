@@ -82,7 +82,7 @@ impl PeerConnection {
 
     fn rtc_config() -> RTCConfiguration {
         RTCConfiguration {
-            // enable_dtls_srtp: true,
+            enable_dtls_srtp: true,
             ice_servers: vec![IceServer {
                 username: None,
                 password: None,
