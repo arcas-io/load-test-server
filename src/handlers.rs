@@ -257,7 +257,18 @@ impl WebRtc for SharedState {
         let session_id = request.session_id;
         let peer_connection_id = request.peer_connection_id;
 
-        call_peer_connection!(self, session_id, peer_connection_id, add_transceiver)?;
+        // TODO: do we need to create a video source for each track addition?
+        let video_source = PeerConnection::file_video_source();
+
+        call_peer_connection!(
+            self,
+            session_id,
+            peer_connection_id,
+            add_transceiver,
+            &self.peer_connection_factory,
+            &video_source,
+            "label".into()
+        )?;
 
         let reply = Empty {};
 

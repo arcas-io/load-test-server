@@ -162,13 +162,22 @@ impl PeerConnection {
         Ok(success)
     }
 
-    pub(crate) fn add_transceiver(&self) -> Result<()> {
+    pub(crate) fn add_transceiver(
+        &self,
+        peer_connection_factory: &PeerConnectionFactory,
+        video_source: &RustTrackVideoSource,
+        label: String,
+    ) -> Result<()> {
         let init = RtpTransceiverInit {
             direction: C_RtpTransceiverDirection::kSendRecv,
             stream_ids: vec!["0".to_owned()],
         };
+        let track = peer_connection_factory
+            .create_video_track(video_source, label)
+            .map_err(|e| ServerError::CouldNotCreateTrack(e.to_string()))?;
+        let stream_ids = vec!["0".to_owned()];
         self.webrtc_peer_connection
-            .add_transceiver_by_media_type(C_cricket_MediaType::MEDIA_TYPE_VIDEO, init)
+            .add_transceiver(track, init)
             .map_err(|e| ServerError::CouldNotAddTransceiver(e.to_string()))?;
 
         Ok(())
@@ -264,7 +273,8 @@ pub(crate) mod tests {
     fn it_adds_a_transceiver() {
         let (factory, video_source) = peer_connection_params();
         let pc = PeerConnection::new(&factory, &video_source, nanoid!(), "new".into()).unwrap();
-        pc.add_transceiver().unwrap();
+        pc.add_transceiver(&factory, &video_source, "Testlabel".into())
+            .unwrap();
     }
 
     // #[test]
