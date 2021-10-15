@@ -104,4 +104,6 @@ message AddTrackRequest {
 message AddTransceiverRequest {
   string session_id = 1; 
   string peer_connection_id = 2;
+  string track_id = 3;
+  string track_label = 4;
 }

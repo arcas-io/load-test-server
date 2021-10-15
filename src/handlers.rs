@@ -256,6 +256,15 @@ impl WebRtc for SharedState {
         let request = requester("add_transceiver", request);
         let session_id = request.session_id;
         let peer_connection_id = request.peer_connection_id;
+        let _track_id = request.track_id;
+        let track_label = request.track_label;
+
+        // let video_source = &self
+        //     .data
+        //     .sessions
+        //     .get_mut(&session_id.clone())
+        //     .ok_or_else(|| crate::error::ServerError::InvalidSessionError(session_id.clone()))?
+        //     .video_source;
 
         // TODO: do we need to create a video source for each track addition?
         let video_source = PeerConnection::file_video_source();
@@ -267,7 +276,7 @@ impl WebRtc for SharedState {
             add_transceiver,
             &self.peer_connection_factory,
             &video_source,
-            "label".into()
+            track_label
         )?;
 
         let reply = Empty {};

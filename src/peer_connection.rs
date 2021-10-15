@@ -1,7 +1,7 @@
 use crate::error::{Result, ServerError};
 
 use core::fmt;
-use libwebrtc::ffi::rtp_transceiver::{C_RtpTransceiverDirection, C_cricket_MediaType};
+use libwebrtc::ffi::rtp_transceiver::C_RtpTransceiverDirection;
 use libwebrtc::ffi::sdp::SdpType;
 use libwebrtc::ffi::stats_collector::Rs_VideoSenderStats;
 use libwebrtc::peerconnection::{
@@ -13,6 +13,7 @@ use libwebrtc::rtp_transceiver::RtpTransceiverInit;
 use libwebrtc::rust_video_track_source::RustTrackVideoSource;
 use libwebrtc::sdp::SessionDescription;
 use libwebrtc::stats_collector::{DummyRTCStatsCollector, RTCStatsCollectorCallback};
+use libwebrtc::video_track::VideoTrack;
 use log::debug;
 use std::sync::mpsc::channel;
 use std::sync::{Arc, Mutex};
@@ -144,19 +145,24 @@ impl PeerConnection {
         Ok(())
     }
 
+    fn create_track(
+        peer_connection_factory: &PeerConnectionFactory,
+        video_source: &RustTrackVideoSource,
+        label: String,
+    ) -> Result<VideoTrack> {
+        peer_connection_factory
+            .create_video_track(video_source, label)
+            .map_err(|e| ServerError::CouldNotCreateTrack(e.to_string()))
+    }
+
     pub(crate) fn add_track(
         &self,
         peer_connection_factory: &PeerConnectionFactory,
         video_source: &RustTrackVideoSource,
         label: String,
     ) -> Result<bool> {
-        debug!("creating video track");
-        let track = peer_connection_factory
-            .create_video_track(video_source, label)
-            .map_err(|e| ServerError::CouldNotCreateTrack(e.to_string()))?;
+        let track = Self::create_track(&peer_connection_factory, &video_source, label)?;
         let stream_ids = vec!["0".to_owned()];
-
-        debug!("adding video track to peer connection");
         let success = self.webrtc_peer_connection.add_track(track, stream_ids);
 
         Ok(success)
@@ -169,13 +175,10 @@ impl PeerConnection {
         label: String,
     ) -> Result<()> {
         let init = RtpTransceiverInit {
-            direction: C_RtpTransceiverDirection::kSendRecv,
+            direction: C_RtpTransceiverDirection::kSendOnly,
             stream_ids: vec!["0".to_owned()],
         };
-        let track = peer_connection_factory
-            .create_video_track(video_source, label)
-            .map_err(|e| ServerError::CouldNotCreateTrack(e.to_string()))?;
-        let stream_ids = vec!["0".to_owned()];
+        let track = Self::create_track(&peer_connection_factory, &video_source, label)?;
         self.webrtc_peer_connection
             .add_transceiver(track, init)
             .map_err(|e| ServerError::CouldNotAddTransceiver(e.to_string()))?;
