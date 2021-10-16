@@ -16,6 +16,7 @@ use webrtc::{
     StartSessionRequest, StopSessionRequest,
 };
 
+// TODO: create a proc macro to inject requester and responder into each handler
 fn requester<T: Debug>(tag: &str, request: Request<T>) -> T {
     let request = request.into_inner();
     info!("Request({}): {:?}", tag, request);
@@ -231,7 +232,7 @@ impl WebRtc for SharedState {
         //     .ok_or_else(|| crate::error::ServerError::InvalidSessionError(session_id.clone()))?
         //     .video_source;
 
-        // TODO: do we need to create a video source for each track addition?
+        // TODO: reuse the video source
         let video_source = PeerConnection::file_video_source();
 
         call_peer_connection!(
@@ -266,7 +267,7 @@ impl WebRtc for SharedState {
         //     .ok_or_else(|| crate::error::ServerError::InvalidSessionError(session_id.clone()))?
         //     .video_source;
 
-        // TODO: do we need to create a video source for each track addition?
+        // TODO: reuse the video source
         let video_source = PeerConnection::file_video_source();
 
         call_peer_connection!(
