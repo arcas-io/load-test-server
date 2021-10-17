@@ -224,16 +224,7 @@ impl WebRtc for SharedState {
         let peer_connection_id = request.peer_connection_id;
         let _track_id = request.track_id;
         let track_label = request.track_label;
-
-        // let video_source = &self
-        //     .data
-        //     .sessions
-        //     .get_mut(&session_id.clone())
-        //     .ok_or_else(|| crate::error::ServerError::InvalidSessionError(session_id.clone()))?
-        //     .video_source;
-
-        // TODO: reuse the video source
-        let video_source = PeerConnection::file_video_source();
+        let video_source = &get_session_attribute!(self, session_id.clone(), video_source).clone();
 
         call_peer_connection!(
             self,
@@ -259,16 +250,7 @@ impl WebRtc for SharedState {
         let peer_connection_id = request.peer_connection_id;
         let _track_id = request.track_id;
         let track_label = request.track_label;
-
-        // let video_source = &self
-        //     .data
-        //     .sessions
-        //     .get_mut(&session_id.clone())
-        //     .ok_or_else(|| crate::error::ServerError::InvalidSessionError(session_id.clone()))?
-        //     .video_source;
-
-        // TODO: reuse the video source
-        let video_source = PeerConnection::file_video_source();
+        let video_source = &get_session_attribute!(self, session_id.clone(), video_source).clone();
 
         call_peer_connection!(
             self,
