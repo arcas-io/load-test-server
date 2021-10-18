@@ -50,7 +50,9 @@ impl SharedState {
             let mut interval = tokio::time::interval(Duration::from_secs(1));
             interval.tick().await;
             loop {
-                data.sessions.iter().for_each(|s| s.value().peer_connection_stats());
+                data.sessions
+                    .iter()
+                    .for_each(|s| s.value().peer_connection_stats());
                 interval.tick().await;
             }
         });

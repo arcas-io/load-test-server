@@ -2,11 +2,11 @@ mod data;
 mod error;
 mod handlers;
 mod helpers;
+mod metrics;
 mod peer_connection;
 mod server;
 mod session;
 mod stats;
-mod metrics;
 
 use crate::data::Data;
 use crate::error::Result;
@@ -36,10 +36,7 @@ async fn main() -> Result<()> {
 
     // metrics server
     let metrics_filter = warp::path!("metrics").and_then(metrics_handler);
-    tokio::spawn(async move {
-        warp::serve(metrics_filter)
-            .run(([0,0,0,0], 9090)).await
-    });
+    tokio::spawn(async move { warp::serve(metrics_filter).run(([0, 0, 0, 0], 9090)).await });
 
     // run the gRPC server
     let addr = "[::1]:50051";

@@ -84,7 +84,9 @@ impl Session {
     }
 
     pub(crate) fn peer_connection_stats(&self) {
-        self.peer_connections.iter().for_each(|pc| pc.value().export_stats());
+        self.peer_connections
+            .iter()
+            .for_each(|pc| pc.value().export_stats());
     }
 
     pub(crate) async fn get_stats(&mut self) -> Result<Stats> {
@@ -229,7 +231,8 @@ mod tests {
 
         let pc_id = nanoid!();
         {
-            let pc = PeerConnection::new(&factory.clone(), pc_id.clone(), session_id, "new".into()).unwrap();
+            let pc = PeerConnection::new(&factory.clone(), pc_id.clone(), session_id, "new".into())
+                .unwrap();
             session.add_peer_connection(pc).await.unwrap();
 
             assert_eq!(session.peer_connections.get(&pc_id).unwrap().id, pc_id);
