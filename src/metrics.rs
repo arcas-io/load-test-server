@@ -1,4 +1,3 @@
-
 use std::ffi::c_void;
 
 use lazy_static::lazy_static;
@@ -6,8 +5,9 @@ use libwebrtc::ffi::memory::{C_deallocate_owned_object, OwnedRustObject};
 use libwebrtc::ffi::stats_collector::{Rs_VideoReceiverStats, Rs_VideoSenderStats};
 use libwebrtc::stats_collector::RTCStatsCollectorCallbackTrait;
 
-use prometheus::{GaugeVec, IntGaugeVec, register_gauge_vec};
+use prometheus::{TextEncoder, GaugeVec, IntGaugeVec, register_gauge_vec};
 use prometheus::register_int_gauge_vec;
+use warp::Rejection;
 
 static VIDEO_LABELS: &[&str; 3] = &["pc_id", "sess_id", "ssrc"];
 
@@ -225,3 +225,11 @@ impl RTCStatsCollectorCallbackTrait for MetricsStatsCollectorCallback {
     }
 }
 
+pub(crate) async fn metrics_handler() -> Result<impl warp::Reply, Rejection>{
+    let encoder = TextEncoder::new();
+    let metrics = prometheus::gather();
+    match encoder.encode_to_string(&metrics) {
+        Ok(res) => Ok(res),
+        Err(_) => Ok("could not encode metrics".to_owned()),
+    }
+}

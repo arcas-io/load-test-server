@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use crate::error::Result;
 use crate::peer_connection::PeerConnectionQueue;
@@ -10,7 +11,7 @@ use tokio::sync::Mutex;
 
 #[derive(Debug)]
 pub(crate) struct SharedState {
-    pub(crate) data: Data,
+    pub(crate) data: Arc<Data>,
     pub(crate) peer_connection_factory: PeerConnectionFactory,
     pub(crate) peer_connection_queue: Arc<Mutex<PeerConnectionQueue>>,
 }
@@ -39,6 +40,20 @@ impl Data {
         self.sessions.insert(session.id.clone(), session);
 
         Ok(())
+    }
+}
+
+impl SharedState {
+    pub(crate) fn start_metrics_collection(&self) {
+        let data = self.data.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(1));
+            interval.tick().await;
+            loop {
+                data.sessions.iter().for_each(|s| s.value().peer_connection_stats());
+                interval.tick().await;
+            }
+        });
     }
 }
 

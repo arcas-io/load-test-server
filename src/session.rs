@@ -83,6 +83,10 @@ impl Session {
         Ok(())
     }
 
+    pub(crate) fn peer_connection_stats(&self) {
+        self.peer_connections.iter().for_each(|pc| pc.value().export_stats());
+    }
+
     pub(crate) async fn get_stats(&mut self) -> Result<Stats> {
         info!("Attempting to get stats for session {}", self.id);
 
