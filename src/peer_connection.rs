@@ -1,4 +1,5 @@
 use crate::error::{Result, ServerError};
+use crate::metrics::MetricsStatsCollectorCallback;
 
 use core::fmt;
 use libwebrtc::ffi::rtp_transceiver::C_RtpTransceiverDirection;
@@ -202,13 +203,20 @@ impl PeerConnection {
 
         video_source
     }
+
+    pub(crate) fn export_stats(&self, session_id: &str) {
+        let collector = MetricsStatsCollectorCallback::new(self.id.clone(), session_id.into());
+        let _ = self.webrtc_peer_connection.get_stats(&(collector.into()));
+    }
 }
 
 #[cfg(test)]
 pub(crate) mod tests {
 
     use super::*;
+    use libwebrtc::rust_video_track_source::RustTrackVideoSource;
     use nanoid::nanoid;
+    use tokio::time::{sleep, Duration};
 
     pub(crate) fn peer_connection_params() -> (PeerConnectionFactory, RustTrackVideoSource) {
         let factory = PeerConnectionFactory::new().unwrap();
@@ -227,6 +235,47 @@ pub(crate) mod tests {
         let (factory, video_source) = peer_connection_params();
         let pc = PeerConnection::new(&factory, &video_source, nanoid!(), "new".into()).unwrap();
         pc.get_stats();
+    }
+
+    #[tokio::test]
+    async fn it_exports_stats_for_a_peer_connection() {
+        let session_id = nanoid!();
+        let (factory, video_source) = peer_connection_params();
+        video_source.start_gstreamer_thread(720, 480);
+        let mut pc = PeerConnection::new(&factory, &video_source, nanoid!(), "new".into()).unwrap();
+        pc.add_track(&factory, &video_source, "Testlabel".into())
+            .unwrap();
+        let offer = pc.create_offer().unwrap();
+        pc.set_local_description(offer.get_type().unwrap(), offer.to_string())
+            .unwrap();
+
+        let mut pc_recv =
+            PeerConnection::new(&factory, &video_source, nanoid!(), "new_recv".into()).unwrap();
+        pc_recv
+            .set_remote_description(offer.get_type().unwrap(), offer.to_string())
+            .unwrap();
+        let answer = pc_recv.create_answer().unwrap();
+        pc_recv
+            .set_local_description(answer.get_type().unwrap(), answer.to_string())
+            .unwrap();
+        pc.set_remote_description(answer.get_type().unwrap(), answer.to_string())
+            .unwrap();
+
+        let pc_cand = pc.receiver.recv().await.unwrap();
+        let pc_recv_cand = pc_recv.receiver.recv().await.unwrap();
+
+        pc.webrtc_peer_connection
+            .add_ice_candidate_from_sdp(pc_recv_cand)
+            .unwrap();
+        pc_recv
+            .webrtc_peer_connection
+            .add_ice_candidate_from_sdp(pc_cand)
+            .unwrap();
+
+        sleep(Duration::from_millis(500)).await;
+        pc.export_stats(&session_id.to_owned());
+        pc_recv.export_stats(&session_id.to_owned());
+        sleep(Duration::from_millis(200)).await;
     }
 
     #[test]

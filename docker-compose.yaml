@@ -1,0 +1,29 @@
+
+services:
+  statsd-exporter:
+    image: prom/statsd-exporter
+    command:
+      - '--web.listen-address=:9102'
+    ports:
+      - "9125:9125/udp"
+      - "9125:9125"
+
+  prometheus:
+    image: prom/prometheus
+    volumes:
+      - "${PWD}/prometheus.yaml:/etc/prometheus/prometheus.yml"
+    ports:
+      - "9090:9090"
+    depends_on:
+      - statsd-exporter
+
+  grafana:
+    image: grafana/grafana:8.2.1
+    volumes:
+      - "${PWD}/grafana.ini:/etc/grafana/grafana.ini"
+    ports:
+      - "9091:9091"
+    depends_on:
+      - prometheus
+
+
