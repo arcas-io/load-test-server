@@ -15,10 +15,8 @@ thiserror = "1.0"
 tonic = "0.5"
 tracing = "0.1"
 tracing-subscriber = { version = "0.2.19", features = ["fmt", "env-filter"] }
-prometheus = "0.13.0"
 lazy_static = "1.4.0"
-# warp for metrics endpoint
-warp = "0.3"
+dogstatsd = "0.6.2"
 
 # ws dependencies
 axum = { version = "0.1.3", features = ["ws"] }

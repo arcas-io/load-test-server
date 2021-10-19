@@ -192,8 +192,5 @@ mod tests {
         pc.export_stats();
         pc_recv.export_stats();
         tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
-        let metrics = prometheus::gather();
-        // log metrics
-        metrics.iter().for_each(|m| log::debug!("{:?}", m));
     }
 }

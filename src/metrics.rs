@@ -1,185 +1,59 @@
 use std::ffi::c_void;
 
-use lazy_static::lazy_static;
 use libwebrtc::ffi::memory::{C_deallocate_owned_object, OwnedRustObject};
 use libwebrtc::ffi::stats_collector::{Rs_VideoReceiverStats, Rs_VideoSenderStats};
 use libwebrtc::stats_collector::RTCStatsCollectorCallbackTrait;
-
-use prometheus::register_int_gauge_vec;
-use prometheus::{register_gauge_vec, GaugeVec, IntGaugeVec, TextEncoder};
-use warp::Rejection;
-
-static VIDEO_LABELS: &[&str; 3] = &["pc_id", "sess_id", "ssrc"];
+use lazy_static::lazy_static;
 
 lazy_static! {
-    static ref V_RX_PACKETS_RECEIVED: IntGaugeVec = register_int_gauge_vec!(
-        "video_rx_packets_received",
-        "Incoming packets received",
-        VIDEO_LABELS,
-    )
-    .unwrap();
-    static ref V_RX_PACKETS_LOST: IntGaugeVec = register_int_gauge_vec!(
-        "video_rx_packets_lost",
-        "Incoming packets lost",
-        VIDEO_LABELS,
-    )
-    .unwrap();
-    static ref V_RX_PACKETS_REPAIRED: IntGaugeVec = register_int_gauge_vec!(
-        "video_rx_packets_repaired",
-        "Incoming packets repaired",
-        VIDEO_LABELS,
-    )
-    .unwrap();
-    static ref V_RX_BYTES_RECEIVED: IntGaugeVec = register_int_gauge_vec!(
-        "video_rx_bytes_received",
-        "Incoming video bytes received",
-        VIDEO_LABELS,
-    )
-    .unwrap();
-    static ref V_RX_FRAMES_DECODED: IntGaugeVec = register_int_gauge_vec!(
-        "video_rx_frames_decoded",
-        "Incoming video frames decoded",
-        VIDEO_LABELS,
-    )
-    .unwrap();
-    static ref V_RX_KEYFRAMES_DECODED: IntGaugeVec = register_int_gauge_vec!(
-        "video_rx_keyframes_decoded",
-        "Incoming video keyframes decoded",
-        VIDEO_LABELS,
-    )
-    .unwrap();
-    static ref V_RX_FRAMES_DROPPED: IntGaugeVec = register_int_gauge_vec!(
-        "video_rx_frames_dropped",
-        "Incoming video frames dropped",
-        VIDEO_LABELS,
-    )
-    .unwrap();
-    static ref V_RX_TOTAL_DECODE_TIME: GaugeVec = register_gauge_vec!(
-        "video_rx_total_decode_time",
-        "Incoming video decode time",
-        VIDEO_LABELS,
-    )
-    .unwrap();
-    static ref V_RX_FRAME_WIDTH: IntGaugeVec = register_int_gauge_vec!(
-        "video_rx_frame_width",
-        "Incoming video frame width",
-        VIDEO_LABELS,
-    )
-    .unwrap();
-    static ref V_RX_FRAME_HEIGHT: IntGaugeVec = register_int_gauge_vec!(
-        "video_rx_frame_height",
-        "Incoming video frame height",
-        VIDEO_LABELS,
-    )
-    .unwrap();
+    static ref METRICS: dogstatsd::Client = {
+        dogstatsd::Client::new(dogstatsd::Options::default()).unwrap()
+    };
 }
 
-lazy_static! {
-    static ref V_TX_PACKETS_SENT: IntGaugeVec = register_int_gauge_vec!(
-        "video_tx_packets_sent",
-        "Outgoing video packets sent",
-        VIDEO_LABELS,
-    )
-    .unwrap();
-    static ref V_TX_BYTES_SENT: IntGaugeVec = register_int_gauge_vec!(
-        "video_tx_bytes_sent",
-        "Outgoing video bytes sent",
-        VIDEO_LABELS,
-    )
-    .unwrap();
-    static ref V_TX_FRAMES_ENCODED: IntGaugeVec = register_int_gauge_vec!(
-        "video_tx_frames_encoded",
-        "Outgoing video frames encoded",
-        VIDEO_LABELS,
-    )
-    .unwrap();
-    static ref V_TX_KEYFRAMES_ENCODED: IntGaugeVec = register_int_gauge_vec!(
-        "video_tx_keyframes_encoded",
-        "Outgoing video keyframes encoded",
-        VIDEO_LABELS,
-    )
-    .unwrap();
-    static ref V_TX_TOTAL_ENCODE_TIME: GaugeVec = register_gauge_vec!(
-        "video_tx_total_encode_time",
-        "Outgoing video encode time",
-        VIDEO_LABELS,
-    )
-    .unwrap();
-    static ref V_TX_FRAME_WIDTH: IntGaugeVec = register_int_gauge_vec!(
-        "video_tx_frame_width",
-        "Outgoing video frame width",
-        VIDEO_LABELS,
-    )
-    .unwrap();
-    static ref V_TX_FRAME_HEIGHT: IntGaugeVec = register_int_gauge_vec!(
-        "video_tx_frame_height",
-        "Outgoing video frame height",
-        VIDEO_LABELS,
-    )
-    .unwrap();
-    static ref V_TX_RTX_PACKETS_SENT: IntGaugeVec = register_int_gauge_vec!(
-        "video_tx_rtx_packets_sent",
-        "Outgoing video retransmitted packets sent",
-        VIDEO_LABELS,
-    )
-    .unwrap();
-    static ref V_TX_RTX_BYTES_SENT: IntGaugeVec = register_int_gauge_vec!(
-        "video_tx_rtx_bytes_sent",
-        "Outgoing video retransmitted bytes sent",
-        VIDEO_LABELS,
-    )
-    .unwrap();
-}
-
-macro_rules! set_int_gauge_vec_metric {
-    ($metric_name:expr,$val:expr,$labels:expr) => {{
-        let _ = ($metric_name)
-            .get_metric_with_label_values($labels)
-            .map(|s| s.set($val as i64));
-    }};
-}
-
-macro_rules! set_gauge_vec_metric {
-    ($metric_name:expr,$val:expr,$labels:expr) => {{
-        let _ = ($metric_name)
-            .get_metric_with_label_values($labels)
-            .map(|s| s.set($val as f64));
-    }};
-}
-
-// SLOW
 fn write_video_rx_stats(stat: &Rs_VideoReceiverStats, pc_id: &str, sess_id: &str) {
-    let ssrc = &stat.ssrc.to_string();
-    let labels = &[pc_id, sess_id, &ssrc];
-    set_int_gauge_vec_metric!(V_RX_PACKETS_RECEIVED, stat.packets_received, labels);
-    set_int_gauge_vec_metric!(V_RX_PACKETS_LOST, stat.packets_lost, labels);
-    set_int_gauge_vec_metric!(V_RX_PACKETS_REPAIRED, stat.packets_repaired, labels);
-    set_int_gauge_vec_metric!(V_RX_BYTES_RECEIVED, stat.bytes_received, labels);
-    set_int_gauge_vec_metric!(V_RX_FRAMES_DECODED, stat.frames_decoded, labels);
-    set_int_gauge_vec_metric!(V_RX_KEYFRAMES_DECODED, stat.keyframes_decoded, labels);
-    set_int_gauge_vec_metric!(V_RX_FRAMES_DROPPED, stat.frames_dropped, labels);
-    set_gauge_vec_metric!(V_RX_TOTAL_DECODE_TIME, stat.total_decode_time, labels);
-    set_int_gauge_vec_metric!(V_RX_FRAME_WIDTH, stat.frame_width, labels);
-    set_int_gauge_vec_metric!(V_RX_FRAME_HEIGHT, stat.frame_height, labels);
+    let tags = &[
+        & format!("pc_id:{}", pc_id),
+        & format!("sess_id:{}", sess_id),
+        & format!("ssrc: {}", stat.ssrc),
+    ];
+
+    let _ = METRICS.count("pc.video.rx.packets_received", stat.packets_received as i64, tags);
+    let _ = METRICS.count("pc.video.rx.packets_lost", stat.packets_lost as i64, tags);
+    let _ = METRICS.count("pc.video.rx.packets_repaired", stat.packets_repaired as i64, tags);
+    let _ = METRICS.count("pc.video.rx.bytes_received", stat.bytes_received as i64, tags);
+    let _ = METRICS.count("pc.video.rx.frames_decoded", stat.frames_decoded as i64, tags);
+    let _ = METRICS.count("pc.video.rx.keyframes_decoded", stat.keyframes_decoded as i64, tags);
+    let _ = METRICS.count("pc.video.rx.frames_dropped", stat.frames_dropped as i64, tags);
+    let _ = METRICS.gauge("pc.video.rx.total_decode_time", stat.total_decode_time.to_string(), tags);
+    let _ = METRICS.gauge("pc.video.rx.frame_width", stat.frame_width.to_string(), tags);
+    let _ = METRICS.gauge("pc.video.rx.frame_height", stat.frame_height.to_string(), tags);
 }
 
-// SLOW
 fn write_video_tx_stats(stat: &Rs_VideoSenderStats, pc_id: &str, sess_id: &str) {
-    let ssrc = &stat.ssrc.to_string();
-    let labels = &[pc_id, sess_id, &ssrc];
-    set_int_gauge_vec_metric!(V_TX_PACKETS_SENT, stat.packets_sent, labels);
-    set_int_gauge_vec_metric!(V_TX_BYTES_SENT, stat.bytes_sent, labels);
-    set_int_gauge_vec_metric!(V_TX_FRAMES_ENCODED, stat.frames_encoded, labels);
-    set_int_gauge_vec_metric!(V_TX_KEYFRAMES_ENCODED, stat.key_frames_encoded, labels);
-    set_gauge_vec_metric!(V_TX_TOTAL_ENCODE_TIME, stat.total_encode_time, labels);
-    set_int_gauge_vec_metric!(V_TX_FRAME_WIDTH, stat.frame_width, labels);
-    set_int_gauge_vec_metric!(V_TX_FRAME_HEIGHT, stat.frame_height, labels);
-    set_int_gauge_vec_metric!(
-        V_TX_RTX_PACKETS_SENT,
-        stat.retransmitted_packets_sent,
-        labels
-    );
-    set_int_gauge_vec_metric!(V_TX_RTX_BYTES_SENT, stat.retransmitted_bytes_sent, labels);
+    let tags = [
+        & format!("pc_id:{}", pc_id),
+        & format!("sess_id:{}", sess_id),
+        & format!("ssrc: {}", stat.ssrc),
+    ];
+
+    let _ = METRICS.count("pc.video.tx.packets_sent", stat.packets_sent as i64, tags);
+    let _ = METRICS.count("pc.video.tx.bytes_sent", stat.bytes_sent as i64, tags);
+    let _ = METRICS.count("pc.video.tx.frames_encoded", stat.frames_encoded as i64, tags);
+    let _ = METRICS.count("pc.video.tx.keyframes_encoded", stat.key_frames_encoded as i64, tags);
+
+    let _ = METRICS.gauge("pc.video.tx.total_encode_time", stat.total_encode_time.to_string(), tags);
+    let _ = METRICS.gauge("pc.video.tx.frame_width", stat.frame_width.to_string(), tags);
+    let _ = METRICS.gauge("pc.video.tx.frame_height", stat.frame_height.to_string(), tags);
+    let _ = METRICS.gauge("pc.video.tx.total_packet_send_delay", stat.total_packet_send_delay.to_string(), tags);
+    let _ = METRICS.gauge("pc.video.tx.remote_jitter", stat.remote_jitter.to_string(), tags);
+
+    let _ = METRICS.count("pc.video.tx.nack_count", stat.nack_count as i64, tags);
+    let _ = METRICS.count("pc.video.tx.fir_count", stat.fir_count as i64, tags);
+    let _ = METRICS.count("pc.video.tx.pli_count", stat.pli_count as i64, tags);
+    let _ = METRICS.count("pc.video.tx.remote_packets_lost", stat.remote_packets_lost as i64, tags);
+
+    let _ = METRICS.gauge("pc.video.tx.remote_round_trip_time", stat.remote_round_trip_time.to_string(), tags);
 }
 
 // MetricsStatsCollector callback
@@ -228,11 +102,3 @@ impl RTCStatsCollectorCallbackTrait for MetricsStatsCollectorCallback {
     }
 }
 
-pub(crate) async fn metrics_handler() -> Result<impl warp::Reply, Rejection> {
-    let encoder = TextEncoder::new();
-    let metrics = prometheus::gather();
-    match encoder.encode_to_string(&metrics) {
-        Ok(res) => Ok(res),
-        Err(_) => Ok("could not encode metrics".to_owned()),
-    }
-}

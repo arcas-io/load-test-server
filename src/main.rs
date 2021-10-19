@@ -11,16 +11,12 @@ mod stats;
 use crate::data::Data;
 use crate::error::Result;
 use crate::error::ServerError;
-use crate::metrics::metrics_handler;
 use crate::server::serve;
 use data::SharedState;
 use libwebrtc::peerconnection_factory::PeerConnectionFactory;
 use std::collections::VecDeque;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use warp::Filter;
-
-extern crate prometheus;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -34,9 +30,7 @@ async fn main() -> Result<()> {
         peer_connection_queue: Arc::from(Mutex::from(VecDeque::new())),
     };
 
-    // metrics server
-    let metrics_filter = warp::path!("metrics").and_then(metrics_handler);
-    tokio::spawn(async move { warp::serve(metrics_filter).run(([0, 0, 0, 0], 9090)).await });
+    shared_state.start_metrics_collection();
 
     // run the gRPC server
     let addr = "[::1]:50051";
