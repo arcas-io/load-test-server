@@ -11,7 +11,7 @@ services:
   prometheus:
     image: prom/prometheus
     volumes:
-      - "${PWD}/prometheus.yaml:/etc/prometheus/prometheus.yml"
+      - "${PWD}/monitoring-config/prometheus.yml:/etc/prometheus/prometheus.yml"
     ports:
       - "9090:9090"
     depends_on:
@@ -20,7 +20,10 @@ services:
   grafana:
     image: grafana/grafana:8.2.1
     volumes:
-      - "${PWD}/grafana.ini:/etc/grafana/grafana.ini"
+      - "${PWD}/monitoring-config/grafana.ini:/etc/grafana/grafana.ini"
+      - "${PWD}/monitoring-config/video-dashboard.json:/var/lib/grafana/dashboards/video-dashboard.json"
+      - "${PWD}/monitoring-config/grafana-dashboard-provisioning.yml:/etc/grafana/provisioning/dashboards/local.yml"
+      - "${PWD}/monitoring-config/grafana-ds-provisioning.yml:/etc/grafana/provisioning/datasources/local.yml"
     ports:
       - "9091:9091"
     depends_on:
