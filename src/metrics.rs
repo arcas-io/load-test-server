@@ -1,3 +1,4 @@
+use crate::config::CONFIG;
 use std::ffi::c_void;
 
 use lazy_static::lazy_static;
@@ -6,13 +7,9 @@ use libwebrtc::ffi::stats_collector::{Rs_VideoReceiverStats, Rs_VideoSenderStats
 use libwebrtc::stats_collector::RTCStatsCollectorCallbackTrait;
 
 lazy_static! {
-    static ref STATSD_HOST: String =
-        std::env::var("STATSD_HOST").unwrap_or_else(|_| "127.0.0.1".to_owned());
-    static ref STATSD_PORT: String =
-        std::env::var("STATSD_PORT").unwrap_or_else(|_| "9125".to_owned());
     static ref METRICS: dogstatsd::Client = {
         let opts = dogstatsd::Options {
-            to_addr: format!("{}:{}", *STATSD_HOST, *STATSD_PORT),
+            to_addr: format!("{}:{}", CONFIG.statsd_host, CONFIG.statsd_port),
             ..Default::default()
         };
         dogstatsd::Client::new(opts).unwrap()
