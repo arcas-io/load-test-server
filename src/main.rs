@@ -1,3 +1,4 @@
+mod config;
 mod data;
 mod error;
 mod handlers;
@@ -8,6 +9,7 @@ mod server;
 mod session;
 mod stats;
 
+use crate::config::CONFIG;
 use crate::data::{Data, SharedState};
 use crate::error::{Result, ServerError};
 use crate::server::serve;
@@ -28,6 +30,6 @@ async fn main() -> Result<()> {
     shared_state.start_metrics_collection();
 
     // run the gRPC server
-    let addr = "[::1]:50051";
-    serve(addr, shared_state).await
+    let addr = format!("{}:{}", CONFIG.host, CONFIG.port);
+    serve(&addr, shared_state).await
 }

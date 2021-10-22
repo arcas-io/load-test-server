@@ -1,5 +1,12 @@
 # WebRTC Server
 
+## Configuration
+First, copy the example config:
+```shell
+cp .env.example .env
+```
+Update `.env` with the appropriate values.
+
 
 ## Running
 ```shell
