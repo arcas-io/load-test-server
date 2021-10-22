@@ -1,11 +1,12 @@
 use crate::error::{Result, ServerError};
 use crate::helpers::elapsed;
-use crate::peer_connection::{PeerConnection, PeerConnectionQueue};
+use crate::peer_connection::PeerConnection;
 use crate::stats::{get_stats, Stats};
+use core::fmt;
 use dashmap::DashMap;
+use libwebrtc::rust_video_track_source::RustTrackVideoSource;
 use log::info;
 use nanoid::nanoid;
-use std::collections::VecDeque;
 use std::time::SystemTime;
 
 pub(crate) type PeerConnections = DashMap<String, PeerConnection>;
@@ -17,28 +18,42 @@ pub(crate) enum State {
     Stopped,
 }
 
-#[derive(Debug)]
 pub(crate) struct Session {
     pub(crate) id: String,
     pub(crate) name: String,
     pub(crate) peer_connections: PeerConnections,
-    pub(crate) peer_connection_queue: PeerConnectionQueue,
+    pub(crate) video_source: RustTrackVideoSource,
     pub(crate) state: State,
     pub(crate) start_time: Option<SystemTime>,
     pub(crate) stop_time: Option<SystemTime>,
+}
+
+impl fmt::Debug for Session {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "id={}, name={}, num_peer_connections={}, state={:?}, start_time={:?}, stop_time={:?}",
+            self.id,
+            self.name,
+            self.peer_connections.len(),
+            self.state,
+            self.start_time,
+            self.stop_time
+        )
+    }
 }
 
 impl Session {
     pub(crate) fn new(name: String) -> Self {
         let id = nanoid!();
         let peer_connections: PeerConnections = DashMap::new();
-        let peer_connection_queue: PeerConnectionQueue = VecDeque::new();
+        let video_source = PeerConnection::file_video_source();
 
         Self {
             id,
             name,
             peer_connections,
-            peer_connection_queue,
+            video_source,
             state: State::Created,
             start_time: None,
             stop_time: None,
@@ -57,8 +72,6 @@ impl Session {
         self.state = State::Started;
         self.start_time = Some(SystemTime::now());
 
-        // TODO: implement LibWebRtc here
-
         info!("Started session: {:?}", self);
 
         Ok(())
@@ -76,8 +89,6 @@ impl Session {
         self.state = State::Stopped;
         self.stop_time = Some(SystemTime::now());
 
-        // TODO: implement LibWebRtc here
-
         info!("stopped session: {:?}", self);
 
         Ok(())
@@ -86,7 +97,7 @@ impl Session {
     pub(crate) fn peer_connection_stats(&self) {
         self.peer_connections
             .iter()
-            .for_each(|pc| pc.value().export_stats());
+            .for_each(|pc| pc.value().export_stats(&self.id.to_owned()));
     }
 
     pub(crate) async fn get_stats(&mut self) -> Result<Stats> {
@@ -103,6 +114,10 @@ impl Session {
         &mut self,
         peer_connection: PeerConnection,
     ) -> Result<()> {
+        info!(
+            "Attempting to add peer connection {} for session {}",
+            peer_connection.id, self.id
+        );
         let peer_connection_id = peer_connection.id.clone();
 
         self.peer_connections
@@ -151,19 +166,44 @@ macro_rules! call_session {
         $shared_state
             .data
             .sessions
+            .get_mut(&$session_id.clone())
+            .ok_or_else(|| crate::error::ServerError::InvalidSessionError($session_id.clone()))?
+            .$fn($($args),*)
+    };
+}
+
+#[macro_export]
+macro_rules! get_session_attribute {
+    ($shared_state:expr, $session_id:expr, $attr:ident) => {
+        &$shared_state
+            .data
+            .sessions
             .get_mut(&$session_id)
             .ok_or_else(|| crate::error::ServerError::InvalidSessionError($session_id))?
-            .$fn($($args),*)
+            .$attr
+    };
+}
+
+#[macro_export]
+macro_rules! call_peer_connection {
+    ($shared_state:expr, $session_id:expr, $peer_connection_id:tt, $fn:ident $(, $args:expr)*) => {
+        $shared_state
+            .data
+            .sessions
+            .get(&$session_id)
+            .ok_or_else(|| ServerError::InvalidSessionError($session_id.clone()))?
+                .peer_connections
+                .get_mut(&$peer_connection_id)
+                .ok_or_else(|| ServerError::InvalidPeerConnection($peer_connection_id.clone()))?
+                .$fn($($args),*)
     };
 }
 
 #[cfg(test)]
 mod tests {
-
-    use libwebrtc::peerconnection_factory::PeerConnectionFactory;
-
     use super::*;
     use crate::data::Data;
+    use crate::peer_connection::tests::peer_connection_params;
 
     #[test]
     fn it_adds_a_session() {
@@ -220,7 +260,7 @@ mod tests {
     #[tokio::test]
     async fn it_creates_a_peer_connection() {
         tracing_subscriber::fmt::init();
-        let factory = PeerConnectionFactory::new().unwrap();
+        let (factory, video_source) = peer_connection_params();
         let session = Session::new("New Session".into());
         let session_id = session.id.clone();
         let data = Data::new();
@@ -231,8 +271,9 @@ mod tests {
 
         let pc_id = nanoid!();
         {
-            let pc = PeerConnection::new(&factory.clone(), pc_id.clone(), session_id, "new".into())
-                .unwrap();
+            let pc =
+                PeerConnection::new(&factory.clone(), &video_source, pc_id.clone(), "new".into())
+                    .unwrap();
             session.add_peer_connection(pc).await.unwrap();
 
             assert_eq!(session.peer_connections.get(&pc_id).unwrap().id, pc_id);

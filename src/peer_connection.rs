@@ -2,23 +2,29 @@ use crate::error::{Result, ServerError};
 use crate::metrics::MetricsStatsCollectorCallback;
 
 use core::fmt;
+use libwebrtc::ffi::rtp_transceiver::C_RtpTransceiverDirection;
+use libwebrtc::ffi::sdp::SdpType;
 use libwebrtc::ffi::stats_collector::Rs_VideoSenderStats;
 use libwebrtc::peerconnection::{
     IceServer, PeerConnection as WebRtcPeerConnection, RTCConfiguration,
 };
 use libwebrtc::peerconnection_factory::PeerConnectionFactory;
 use libwebrtc::peerconnection_observer::{PeerConnectionObserver, PeerConnectionObserverTrait};
+use libwebrtc::rtp_transceiver::RtpTransceiverInit;
+use libwebrtc::rust_video_track_source::RustTrackVideoSource;
+use libwebrtc::sdp::SessionDescription;
 use libwebrtc::stats_collector::{DummyRTCStatsCollector, RTCStatsCollectorCallback};
+use libwebrtc::video_track::VideoTrack;
 use log::debug;
-use std::collections::VecDeque;
 use std::sync::mpsc::channel;
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc::{Receiver, Sender};
 use tracing::{info, warn};
 
+// TODO: temp allowing dead code, only used in tests currently
+#[allow(dead_code)]
 pub(crate) struct PeerConnection {
     pub(crate) id: String,
-    pub(crate) session_id: String,
     pub(crate) name: String,
     pub(crate) webrtc_peer_connection: WebRtcPeerConnection,
     pub(crate) observer: PeerConnectionObserver,
@@ -31,16 +37,6 @@ impl fmt::Debug for PeerConnection {
     }
 }
 
-#[derive(Debug)]
-pub(crate) struct PeerConnectionQueueInner {
-    pub(crate) id: String,
-    pub(crate) session_id: String,
-    pub(crate) name: String,
-}
-
-/// Queue to fill on the gRPC side to be consumed by the websocket
-pub(crate) type PeerConnectionQueue = VecDeque<PeerConnectionQueueInner>;
-
 #[derive(Clone)]
 pub(crate) struct ChannelPeerConnectionObserver {
     pub(crate) sender: Sender<String>,
@@ -50,11 +46,8 @@ impl PeerConnectionObserverTrait for ChannelPeerConnectionObserver {
     fn on_ice_candidate(&mut self, candidate_sdp: &str, sdp_mid: &str, sdp_mline_index: u32) {
         info!("candidate generated: {} {}", sdp_mid, sdp_mline_index);
 
-        match self.sender.blocking_send(candidate_sdp.to_owned()) {
-            Err(_err) => {
-                warn!("could not pass sdp candidate");
-            }
-            _ => {}
+        if self.sender.blocking_send(candidate_sdp.to_owned()).is_err() {
+            warn!("could not pass sdp candidate");
         }
     }
 }
@@ -62,8 +55,8 @@ impl PeerConnectionObserverTrait for ChannelPeerConnectionObserver {
 impl PeerConnection {
     pub(crate) fn new(
         peer_connection_factory: &PeerConnectionFactory,
+        video_source: &RustTrackVideoSource,
         id: String,
-        session_id: String,
         name: String,
     ) -> Result<PeerConnection> {
         debug!("Creating observer");
@@ -77,9 +70,11 @@ impl PeerConnection {
             .map_err(|e| ServerError::CreatePeerConnectionError(e.to_string()))?;
         debug!("created peerconnection");
 
+        // add the video track
+        peer_connection_factory.create_and_add_video_track(&webrtc_peer_connection, &video_source);
+
         Ok(PeerConnection {
             id,
-            session_id,
             name,
             webrtc_peer_connection,
             observer,
@@ -88,14 +83,16 @@ impl PeerConnection {
     }
 
     fn rtc_config() -> RTCConfiguration {
-        let mut config = RTCConfiguration::default();
-        config.ice_servers = vec![IceServer {
-            username: None,
-            password: None,
-            hostname: None,
-            urls: vec!["stun:stun.l.google.com:19302".to_string()],
-        }];
-        config
+        RTCConfiguration {
+            enable_dtls_srtp: true,
+            ice_servers: vec![IceServer {
+                username: None,
+                password: None,
+                hostname: None,
+                urls: vec!["stun:stun.l.google.com:19302".to_string()],
+            }],
+            ..Default::default()
+        }
     }
 
     /// Send the callback to the rust ffi bindings and just listen for the first message.
@@ -107,74 +104,161 @@ impl PeerConnection {
         let stats_collector = DummyRTCStatsCollector::new(sender);
         let stats_callback: RTCStatsCollectorCallback = stats_collector.into();
         let _ = self.webrtc_peer_connection.get_stats(&stats_callback);
-        let stats = receiver.recv().unwrap_or(vec![]);
 
-        stats
+        receiver.recv().unwrap_or_default()
     }
 
-    pub(crate) fn export_stats(&self) {
-        let collector =
-            MetricsStatsCollectorCallback::new(self.id.clone(), self.session_id.clone());
+    pub(crate) fn create_offer(&mut self) -> Result<SessionDescription> {
+        let sdp = self
+            .webrtc_peer_connection
+            .create_offer()
+            .map_err(|e| ServerError::CouldNotCreateOffer(e.to_string()))?;
+
+        Ok(sdp)
+    }
+
+    pub(crate) fn create_answer(&mut self) -> Result<SessionDescription> {
+        let sdp = self
+            .webrtc_peer_connection
+            .create_answer()
+            .map_err(|e| ServerError::CouldNotCreateAnswer(e.to_string()))?;
+
+        Ok(sdp)
+    }
+
+    pub(crate) fn set_local_description(&mut self, sdp_type: SdpType, sdp: String) -> Result<()> {
+        let description = SessionDescription::from_string(sdp_type, sdp)
+            .map_err(|e| ServerError::CouldNotParseSdp(e.to_string()))?;
+        self.webrtc_peer_connection
+            .set_local_description(description)
+            .map_err(|e| ServerError::CouldNotSetSdp(e.to_string()))?;
+
+        Ok(())
+    }
+
+    pub(crate) fn set_remote_description(&mut self, sdp_type: SdpType, sdp: String) -> Result<()> {
+        let description = SessionDescription::from_string(sdp_type, sdp)
+            .map_err(|e| ServerError::CouldNotParseSdp(e.to_string()))?;
+        self.webrtc_peer_connection
+            .set_remote_description(description)
+            .map_err(|e| ServerError::CouldNotSetSdp(e.to_string()))?;
+
+        Ok(())
+    }
+
+    fn create_track(
+        peer_connection_factory: &PeerConnectionFactory,
+        video_source: &RustTrackVideoSource,
+        label: String,
+    ) -> Result<VideoTrack> {
+        peer_connection_factory
+            .create_video_track(video_source, label)
+            .map_err(|e| ServerError::CouldNotCreateTrack(e.to_string()))
+    }
+
+    pub(crate) fn add_track(
+        &self,
+        peer_connection_factory: &PeerConnectionFactory,
+        video_source: &RustTrackVideoSource,
+        label: String,
+    ) -> Result<bool> {
+        let track = Self::create_track(&peer_connection_factory, &video_source, label)?;
+        let stream_ids = vec!["0".to_owned()];
+        let success = self.webrtc_peer_connection.add_track(track, stream_ids);
+
+        Ok(success)
+    }
+
+    pub(crate) fn add_transceiver(
+        &self,
+        peer_connection_factory: &PeerConnectionFactory,
+        video_source: &RustTrackVideoSource,
+        label: String,
+    ) -> Result<()> {
+        let init = RtpTransceiverInit {
+            direction: C_RtpTransceiverDirection::kSendOnly,
+            stream_ids: vec!["0".to_owned()],
+        };
+        let track = Self::create_track(&peer_connection_factory, &video_source, label)?;
+        self.webrtc_peer_connection
+            .add_transceiver(track, init)
+            .map_err(|e| ServerError::CouldNotAddTransceiver(e.to_string()))?;
+
+        Ok(())
+    }
+
+    // stream a pre-encoded file from gstreamer to avoid encoding overhead
+    pub(crate) fn file_video_source() -> RustTrackVideoSource {
+        let video_source = RustTrackVideoSource::default();
+        let (width, height) = (720, 480);
+        video_source.start_gstreamer_thread_launch(
+            & format!(
+                "filesrc location=static/file.mp4 ! qtdemux name=demux demux.video_0 ! avdec_h264 ! videoconvert ! videoscale ! video/x-raw,format=I420,width={},height={}",
+                width,
+                height,
+            ),
+            width,
+            height,
+        );
+
+        video_source
+    }
+
+    pub(crate) fn export_stats(&self, session_id: &str) {
+        let collector = MetricsStatsCollectorCallback::new(self.id.clone(), session_id.into());
         let _ = self.webrtc_peer_connection.get_stats(&(collector.into()));
     }
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
 
     use super::*;
     use libwebrtc::rust_video_track_source::RustTrackVideoSource;
     use nanoid::nanoid;
+    use tokio::time::{sleep, Duration};
+
+    pub(crate) fn peer_connection_params() -> (PeerConnectionFactory, RustTrackVideoSource) {
+        let factory = PeerConnectionFactory::new().unwrap();
+        let video_source = PeerConnection::file_video_source();
+        (factory, video_source)
+    }
 
     #[tokio::test]
     async fn it_creates_a_new_peer_connection() {
-        let factory = PeerConnectionFactory::new().unwrap();
-        PeerConnection::new(&factory, nanoid!(), "session_id".to_owned(), "new".into()).unwrap();
+        let (factory, video_source) = peer_connection_params();
+        PeerConnection::new(&factory, &video_source, nanoid!(), "new".into()).unwrap();
     }
 
     #[tokio::test]
     async fn it_gets_stats_for_a_peer_connection() {
-        let factory = PeerConnectionFactory::new().unwrap();
-        let pc = PeerConnection::new(&factory, nanoid!(), "session_id".to_owned(), "new".into())
-            .unwrap();
-        let _stats = pc.get_stats();
+        let (factory, video_source) = peer_connection_params();
+        let pc = PeerConnection::new(&factory, &video_source, nanoid!(), "new".into()).unwrap();
+        pc.get_stats();
     }
 
     #[tokio::test]
     async fn it_exports_stats_for_a_peer_connection() {
-        let factory = PeerConnectionFactory::new().unwrap();
-        let source = RustTrackVideoSource::default();
-        source.start_gstreamer_thread(720, 480);
-        let mut pc =
-            PeerConnection::new(&factory, nanoid!(), "session_id".to_owned(), "new".into())
-                .unwrap();
-        let track = factory
-            .create_video_track(&source, "video".to_owned())
+        let session_id = nanoid!();
+        let (factory, video_source) = peer_connection_params();
+        video_source.start_gstreamer_thread(720, 480);
+        let mut pc = PeerConnection::new(&factory, &video_source, nanoid!(), "new".into()).unwrap();
+        pc.add_track(&factory, &video_source, "Testlabel".into())
             .unwrap();
-
-        pc.webrtc_peer_connection
-            .add_track(track, vec!["0".to_owned()]);
-        let offer = pc.webrtc_peer_connection.create_offer().unwrap();
-        pc.webrtc_peer_connection
-            .set_local_description(offer.clone())
+        let offer = pc.create_offer().unwrap();
+        pc.set_local_description(offer.get_type().unwrap(), offer.to_string())
             .unwrap();
 
         let mut pc_recv =
-            PeerConnection::new(&factory, nanoid!(), "session_id".to_owned(), "new".into())
-                .unwrap();
+            PeerConnection::new(&factory, &video_source, nanoid!(), "new_recv".into()).unwrap();
         pc_recv
-            .webrtc_peer_connection
-            .set_remote_description(offer)
+            .set_remote_description(offer.get_type().unwrap(), offer.to_string())
             .unwrap();
-        let answer = pc_recv.webrtc_peer_connection.create_answer().unwrap();
-
+        let answer = pc_recv.create_answer().unwrap();
         pc_recv
-            .webrtc_peer_connection
-            .set_local_description(answer.clone())
+            .set_local_description(answer.get_type().unwrap(), answer.to_string())
             .unwrap();
-
-        pc.webrtc_peer_connection
-            .set_remote_description(answer)
+        pc.set_remote_description(answer.get_type().unwrap(), answer.to_string())
             .unwrap();
 
         let pc_cand = pc.receiver.recv().await.unwrap();
@@ -188,9 +272,67 @@ mod tests {
             .add_ice_candidate_from_sdp(pc_cand)
             .unwrap();
 
-        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-        pc.export_stats();
-        pc_recv.export_stats();
-        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+        sleep(Duration::from_millis(500)).await;
+        pc.export_stats(&session_id.to_owned());
+        pc_recv.export_stats(&session_id.to_owned());
+        sleep(Duration::from_millis(200)).await;
     }
+
+    #[test]
+    fn it_creates_an_offer() {
+        let (factory, video_source) = peer_connection_params();
+        let mut pc = PeerConnection::new(&factory, &video_source, nanoid!(), "new".into()).unwrap();
+        pc.create_offer().unwrap();
+    }
+
+    #[test]
+    fn it_creates_an_answer() {
+        let (factory, video_source) = peer_connection_params();
+        let mut pc = PeerConnection::new(&factory, &video_source, nanoid!(), "new".into()).unwrap();
+        let offer = pc.create_offer().unwrap();
+        pc.set_remote_description(offer.get_type().unwrap(), offer.to_string())
+            .unwrap();
+        pc.create_answer().unwrap();
+    }
+
+    #[test]
+    fn it_sets_local_description() {
+        let (factory, video_source) = peer_connection_params();
+        let mut pc = PeerConnection::new(&factory, &video_source, nanoid!(), "new".into()).unwrap();
+        let offer = pc.create_offer().unwrap();
+        pc.set_local_description(offer.get_type().unwrap(), offer.to_string())
+            .unwrap();
+    }
+
+    #[test]
+    fn it_sets_remote_description() {
+        let (factory, video_source) = peer_connection_params();
+        let mut pc = PeerConnection::new(&factory, &video_source, nanoid!(), "new".into()).unwrap();
+        let offer = pc.create_offer().unwrap();
+        pc.set_remote_description(offer.get_type().unwrap(), offer.to_string())
+            .unwrap();
+    }
+
+    #[test]
+    fn it_adds_a_track() {
+        let (factory, video_source) = peer_connection_params();
+        let pc = PeerConnection::new(&factory, &video_source, nanoid!(), "new".into()).unwrap();
+        pc.add_track(&factory, &video_source, "Testlabel".into())
+            .unwrap();
+    }
+
+    #[test]
+    fn it_adds_a_transceiver() {
+        let (factory, video_source) = peer_connection_params();
+        let pc = PeerConnection::new(&factory, &video_source, nanoid!(), "new".into()).unwrap();
+        pc.add_transceiver(&factory, &video_source, "Testlabel".into())
+            .unwrap();
+    }
+
+    // #[test]
+    // fn it_does_all_the_things() {
+    //     let (factory, video_source) = peer_connection_params();
+    //     let pc = PeerConnection::new(&factory, &video_source, nanoid!(), "new".into()).unwrap();
+    //     pc.add_transceiver().unwrap();
+    // }
 }

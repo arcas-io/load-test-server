@@ -1,14 +1,33 @@
+use log::error;
 use std::net::AddrParseError;
 use std::sync::{MutexGuard, PoisonError};
 use thiserror::Error;
 use tonic::Status;
 
-pub type Result<T> = std::result::Result<T, ServerError>;
+pub(crate) type Result<T> = std::result::Result<T, ServerError>;
 
 #[derive(Error, Debug)]
 pub enum ServerError {
     #[error("Could not create peer connection: {0}")]
     CreatePeerConnectionError(String),
+
+    #[error("Could not create answer: {0}")]
+    CouldNotCreateAnswer(String),
+
+    #[error("Could not create offer: {0}")]
+    CouldNotCreateOffer(String),
+
+    #[error("Could not create track: {0}")]
+    CouldNotCreateTrack(String),
+
+    #[error("Could not create transceiver: {0}")]
+    CouldNotAddTransceiver(String),
+
+    #[error("Could not parse SDP: {0}")]
+    CouldNotParseSdp(String),
+
+    #[error("Could not set SDP: {0}")]
+    CouldNotSetSdp(String),
 
     #[error("Could not retrieve stats for session {0}, peer connection {1}")]
     GetStatsError(String, String),
@@ -34,18 +53,21 @@ pub enum ServerError {
 
 impl From<AddrParseError> for ServerError {
     fn from(error: AddrParseError) -> Self {
+        error!("{:?}", error);
         ServerError::ParseError(error.to_string())
     }
 }
 
 impl<T> From<PoisonError<MutexGuard<'_, T>>> for ServerError {
     fn from(error: PoisonError<MutexGuard<T>>) -> Self {
+        error!("{:?}", error);
         ServerError::InternalError(error.to_string())
     }
 }
 
 impl From<ServerError> for Status {
-    fn from(err: ServerError) -> Status {
-        Status::internal(err.to_string())
+    fn from(error: ServerError) -> Status {
+        error!("{:?}", error);
+        Status::internal(error.to_string())
     }
 }

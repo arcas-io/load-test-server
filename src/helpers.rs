@@ -20,5 +20,5 @@ pub(crate) fn elapsed(
 
 // convert system time to timestamp
 pub(crate) fn systemtime_to_timestamp(time: Option<SystemTime>) -> Option<Timestamp> {
-    time.and_then(|time| Some(Timestamp::from(time)))
+    time.map(Timestamp::from)
 }
