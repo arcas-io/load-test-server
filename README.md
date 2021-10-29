@@ -13,6 +13,16 @@ Update `.env` with the appropriate values.
 RUST_LOG=INFO cargo run
 ```
 
+## Building the Docker Image
+```shell
+docker build . -t "littlebearlabs/server"
+```
+
+## Running Docker
+```shell
+docker run -p 50051:50051 "littlebearlabs/server"
+```
+
 ## API
 
 ### Create a New Session
