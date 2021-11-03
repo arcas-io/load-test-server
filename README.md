@@ -31,6 +31,8 @@ docker compuse up
 
 To pull up the Grafana dashboard, navigate your browser to `http://localhost:9091`.  The default username and password is `admin`.
 
+To view the video dashboard, navigate your browser to `http://localhost:9091/d/R48Exadnz/video-dashboard?orgId=1`.
+
 ## API
 
 ### Create a New Session
