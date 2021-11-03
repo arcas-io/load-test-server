@@ -23,6 +23,14 @@ docker build . -t "littlebearlabs/server"
 docker run -p 50051:50051 "littlebearlabs/server"
 ```
 
+## Running the Dependencies in a Docker Network
+To run the docker network, which includes Grafana, Prometheus, and the StatsD Exporter:
+```shell
+docker compuse up
+```
+
+To pull up the Grafana dashboard, navigate your browser to `http://localhost:9091`.  The default username and password is `admin`.
+
 ## API
 
 ### Create a New Session
