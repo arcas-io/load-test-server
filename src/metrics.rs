@@ -2,9 +2,6 @@ use crate::config::CONFIG;
 use std::ffi::c_void;
 
 use lazy_static::lazy_static;
-use libwebrtc::ffi::memory::{C_deallocate_owned_object, OwnedRustObject};
-use libwebrtc::ffi::stats_collector::{Rs_VideoReceiverStats, Rs_VideoSenderStats};
-use libwebrtc::stats_collector::RTCStatsCollectorCallbackTrait;
 use libwebrtc_sys::ffi::{ArcasVideoReceiverStats, ArcasVideoSenderStats};
 
 lazy_static! {

@@ -1,7 +1,6 @@
 use crate::error::{Result, ServerError};
 use crate::helpers::systemtime_to_timestamp;
 use crate::session::{Session, State};
-use libwebrtc::ffi::stats_collector::Rs_VideoSenderStats;
 use libwebrtc_sys::ffi::ArcasVideoSenderStats;
 use std::time::SystemTime;
 
