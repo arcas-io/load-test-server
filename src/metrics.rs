@@ -5,6 +5,7 @@ use lazy_static::lazy_static;
 use libwebrtc::ffi::memory::{C_deallocate_owned_object, OwnedRustObject};
 use libwebrtc::ffi::stats_collector::{Rs_VideoReceiverStats, Rs_VideoSenderStats};
 use libwebrtc::stats_collector::RTCStatsCollectorCallbackTrait;
+use libwebrtc_sys::ffi::{ArcasVideoReceiverStats, ArcasVideoSenderStats};
 
 lazy_static! {
     static ref METRICS: dogstatsd::Client = {
@@ -16,7 +17,7 @@ lazy_static! {
     };
 }
 
-fn write_video_rx_stats(stat: &Rs_VideoReceiverStats, pc_id: &str, sess_id: &str) {
+pub fn write_video_rx_stats(stat: &ArcasVideoReceiverStats, pc_id: &str, sess_id: &str) {
     let tags = &[
         &format!("pc_id:{}", pc_id),
         &format!("sess_id:{}", sess_id),
@@ -71,7 +72,7 @@ fn write_video_rx_stats(stat: &Rs_VideoReceiverStats, pc_id: &str, sess_id: &str
     );
 }
 
-fn write_video_tx_stats(stat: &Rs_VideoSenderStats, pc_id: &str, sess_id: &str) {
+pub fn write_video_tx_stats(stat: &ArcasVideoSenderStats, pc_id: &str, sess_id: &str) {
     let tags = [
         &format!("pc_id:{}", pc_id),
         &format!("sess_id:{}", sess_id),
@@ -131,50 +132,4 @@ fn write_video_tx_stats(stat: &Rs_VideoSenderStats, pc_id: &str, sess_id: &str) 
         stat.remote_round_trip_time.to_string(),
         tags,
     );
-}
-
-// MetricsStatsCollector callback
-// TODO: This is ***VERY*** inefficient. Find way to persist required
-// metrics in peerconnection wrapper object
-pub struct MetricsStatsCollectorCallback {
-    pc_id: String,
-    sess_id: String,
-}
-
-impl MetricsStatsCollectorCallback {
-    pub fn new(peer_connection_id: String, session_id: String) -> Self {
-        MetricsStatsCollectorCallback {
-            pc_id: peer_connection_id,
-            sess_id: session_id,
-        }
-    }
-}
-
-impl From<MetricsStatsCollectorCallback> for OwnedRustObject {
-    fn from(collector: MetricsStatsCollectorCallback) -> Self {
-        OwnedRustObject {
-            object: Box::into_raw(Box::from(collector)) as *mut c_void,
-            Deallocate: C_deallocate_owned_object::<MetricsStatsCollectorCallback>,
-        }
-    }
-}
-
-impl RTCStatsCollectorCallbackTrait for MetricsStatsCollectorCallback {
-    fn on_stats_delivered(
-        &mut self,
-        video_receiver_stats: Vec<libwebrtc::ffi::stats_collector::Rs_VideoReceiverStats>,
-        _audio_receiver_stats: Vec<libwebrtc::ffi::stats_collector::Rs_AudioReceiverStats>,
-        video_sender_stats: Vec<libwebrtc::ffi::stats_collector::Rs_VideoSenderStats>,
-        _audio_sender_stats: Vec<libwebrtc::ffi::stats_collector::Rs_AudioSenderStats>,
-    ) {
-        // TODO: This is ***VERY*** inefficient. Find way to persist required
-        // metrics in peerconnection wrapper object
-        for stat in &video_receiver_stats {
-            write_video_rx_stats(stat, &self.pc_id, &self.sess_id);
-        }
-
-        for stat in &video_sender_stats {
-            write_video_tx_stats(stat, &self.pc_id, &self.sess_id);
-        }
-    }
 }

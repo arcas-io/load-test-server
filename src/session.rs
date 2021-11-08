@@ -3,13 +3,17 @@ use crate::helpers::elapsed;
 use crate::peer_connection::PeerConnection;
 use crate::stats::{get_stats, Stats};
 use core::fmt;
+use cxx::UniquePtr;
 use dashmap::DashMap;
 use libwebrtc::rust_video_track_source::RustTrackVideoSource;
+use libwebrtc_sys::ffi::{ArcasVideoTrack, ArcasVideoTrackSource};
 use log::info;
 use nanoid::nanoid;
+use parking_lot::Mutex;
+use std::sync::Arc;
 use std::time::SystemTime;
 
-pub(crate) type PeerConnections = DashMap<String, PeerConnection>;
+pub(crate) type PeerConnections = DashMap<String, PeerConnection<'static>>;
 
 #[derive(Debug, Clone, PartialEq, strum::ToString)]
 pub(crate) enum State {
@@ -22,7 +26,7 @@ pub(crate) struct Session {
     pub(crate) id: String,
     pub(crate) name: String,
     pub(crate) peer_connections: PeerConnections,
-    pub(crate) video_source: RustTrackVideoSource,
+    pub(crate) video_source: Arc<Mutex<UniquePtr<ArcasVideoTrackSource>>>,
     pub(crate) state: State,
     pub(crate) start_time: Option<SystemTime>,
     pub(crate) stop_time: Option<SystemTime>,
@@ -53,7 +57,7 @@ impl Session {
             id,
             name,
             peer_connections,
-            video_source,
+            video_source: Arc::new(Mutex::new(video_source)),
             state: State::Created,
             start_time: None,
             stop_time: None,
@@ -110,9 +114,9 @@ impl Session {
         Ok(stats)
     }
 
-    pub(crate) async fn add_peer_connection(
+    pub(crate) fn add_peer_connection(
         &mut self,
-        peer_connection: PeerConnection,
+        peer_connection: PeerConnection<'static>,
     ) -> Result<()> {
         info!(
             "Attempting to add peer connection {} for session {}",
@@ -175,10 +179,10 @@ macro_rules! call_session {
 #[macro_export]
 macro_rules! get_session_attribute {
     ($shared_state:expr, $session_id:expr, $attr:ident) => {
-        &$shared_state
+        $shared_state
             .data
             .sessions
-            .get_mut(&$session_id)
+            .get(&$session_id)
             .ok_or_else(|| crate::error::ServerError::InvalidSessionError($session_id))?
             .$attr
     };
@@ -257,10 +261,10 @@ mod tests {
         assert!(stats.is_ok());
     }
 
-    #[tokio::test]
-    async fn it_creates_a_peer_connection() {
+    #[test]
+    fn it_creates_a_peer_connection() {
         tracing_subscriber::fmt::init();
-        let (factory, video_source) = peer_connection_params();
+        let (_api, factory, mut video_source) = peer_connection_params();
         let session = Session::new("New Session".into());
         let session_id = session.id.clone();
         let data = Data::new();
@@ -271,12 +275,17 @@ mod tests {
 
         let pc_id = nanoid!();
         {
-            let pc =
-                PeerConnection::new(&factory.clone(), &video_source, pc_id.clone(), "new".into())
-                    .unwrap();
-            session.add_peer_connection(pc).await.unwrap();
+            let pc = PeerConnection::new(
+                factory.as_ref().unwrap(),
+                video_source.as_mut().unwrap(),
+                pc_id.clone(),
+                "new".into(),
+            )
+            .unwrap();
+            session.add_peer_connection(pc).unwrap();
 
             assert_eq!(session.peer_connections.get(&pc_id).unwrap().id, pc_id);
+            std::thread::sleep_ms(1000);
         }
     }
 }
