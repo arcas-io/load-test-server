@@ -3,14 +3,23 @@ use std::time::Duration;
 
 use crate::error::Result;
 use crate::session::Session;
+use cxx::UniquePtr;
 use dashmap::DashMap;
-use libwebrtc::peerconnection_factory::PeerConnectionFactory;
 use log::info;
 
-#[derive(Debug)]
 pub(crate) struct SharedState {
     pub(crate) data: Arc<Data>,
-    pub(crate) peer_connection_factory: PeerConnectionFactory,
+    pub(crate) peer_connection_factory:
+        UniquePtr<libwebrtc_sys::ffi::ArcasPeerConnectionFactory<'static>>,
+    pub(crate) arcas_api: UniquePtr<libwebrtc_sys::ffi::ArcasAPI<'static>>,
+}
+
+impl std::fmt::Debug for SharedState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SharedState")
+            .field("data", &self.data)
+            .finish()
+    }
 }
 
 pub(crate) type Sessions = DashMap<String, Session>;

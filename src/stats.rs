@@ -2,6 +2,7 @@ use crate::error::{Result, ServerError};
 use crate::helpers::systemtime_to_timestamp;
 use crate::session::{Session, State};
 use libwebrtc::ffi::stats_collector::Rs_VideoSenderStats;
+use libwebrtc_sys::ffi::ArcasVideoSenderStats;
 use std::time::SystemTime;
 
 #[derive(Debug)]
@@ -47,7 +48,7 @@ impl From<SessionStats> for crate::server::webrtc::SessionStats {
 pub(crate) struct PeerConnectionStats {
     pub(crate) id: String,
     pub(crate) name: String,
-    pub(crate) video_sender: Vec<Rs_VideoSenderStats>,
+    pub(crate) video_sender: Vec<ArcasVideoSenderStats>,
 }
 
 impl From<PeerConnectionStats> for crate::server::webrtc::PeerConnectionStats {
@@ -66,8 +67,10 @@ impl From<PeerConnectionStats> for crate::server::webrtc::PeerConnectionStats {
     }
 }
 
-impl From<Rs_VideoSenderStats> for crate::server::webrtc::PeerConnectionStat {
-    fn from(video_sender_stats: Rs_VideoSenderStats) -> crate::server::webrtc::PeerConnectionStat {
+impl From<ArcasVideoSenderStats> for crate::server::webrtc::PeerConnectionStat {
+    fn from(
+        video_sender_stats: ArcasVideoSenderStats,
+    ) -> crate::server::webrtc::PeerConnectionStat {
         crate::server::webrtc::PeerConnectionStat {
             ssrc: video_sender_stats.ssrc,
             packets_sent: video_sender_stats.packets_sent,
@@ -130,7 +133,6 @@ pub(crate) async fn get_stats(session: &mut Session) -> Result<Stats> {
         // put the peer connection back into the hashmap
         session
             .add_peer_connection(peer_connection)
-            .await
             .map_err(|_e| ServerError::GetStatsError(session.id.clone(), peer_connection_id))?;
     }
 
