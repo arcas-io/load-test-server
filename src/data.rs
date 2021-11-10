@@ -69,10 +69,11 @@ impl SharedState {
 mod tests {
 
     use super::*;
+    use nanoid::nanoid;
 
     #[test]
     fn it_adds_a_session() {
-        let session = Session::new("New Session".into());
+        let session = Session::new(nanoid!(), "New Session".into());
         let session_id = session.id.clone();
         let data = Data::new();
         data.add_session(session).unwrap();

@@ -57,9 +57,8 @@ impl WebRtc for SharedState {
         &self,
         request: Request<CreateSessionRequest>,
     ) -> Result<Response<CreateSessionResponse>, Status> {
-        let name = requester("create_session", request).name;
-        let session = Session::new(name);
-        let session_id = session.id.clone();
+        let CreateSessionRequest { session_id, name } = requester("create_session", request);
+        let session = Session::new(session_id.clone(), name);
         self.data.add_session(session)?;
         let reply = webrtc::CreateSessionResponse { session_id };
 
@@ -111,9 +110,11 @@ impl WebRtc for SharedState {
         &self,
         request: Request<CreatePeerConnectionRequest>,
     ) -> Result<Response<CreatePeerConnectionResponse>, Status> {
-        let CreatePeerConnectionRequest { name, session_id } =
-            requester("create_peer_connection", request);
-        let peer_connection_id = nanoid::nanoid!();
+        let CreatePeerConnectionRequest {
+            session_id,
+            peer_connection_id,
+            name,
+        } = requester("create_peer_connection", request);
 
         let video_source_lock =
             get_session_attribute!(self, session_id.clone(), video_source).clone();

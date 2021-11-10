@@ -149,11 +149,12 @@ mod tests {
 
     use super::*;
     use crate::data::Data;
+    use nanoid::nanoid;
     use std::{thread, time::Duration};
 
     #[tokio::test]
     async fn it_gets_stats() {
-        let session = Session::new("New Session".into());
+        let session = Session::new(nanoid!(), "New Session".into());
         let session_id = session.id.clone();
         let data = Data::new();
         data.add_session(session).unwrap();

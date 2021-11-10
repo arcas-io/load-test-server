@@ -8,7 +8,6 @@ use dashmap::DashMap;
 use libwebrtc::rust_video_track_source::RustTrackVideoSource;
 use libwebrtc_sys::ffi::{ArcasVideoTrack, ArcasVideoTrackSource};
 use log::info;
-use nanoid::nanoid;
 use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::SystemTime;
@@ -48,8 +47,7 @@ impl fmt::Debug for Session {
 }
 
 impl Session {
-    pub(crate) fn new(name: String) -> Self {
-        let id = nanoid!();
+    pub(crate) fn new(id: String, name: String) -> Self {
         let peer_connections: PeerConnections = DashMap::new();
         let video_source = PeerConnection::file_video_source();
 
@@ -208,10 +206,11 @@ mod tests {
     use super::*;
     use crate::data::Data;
     use crate::peer_connection::tests::peer_connection_params;
+    use nanoid::nanoid;
 
     #[test]
     fn it_adds_a_session() {
-        let session = Session::new("New Session".into());
+        let session = Session::new(nanoid!(), "New Session".into());
         let session_id = session.id.clone();
         let data = Data::new();
         data.add_session(session).unwrap();
@@ -221,7 +220,7 @@ mod tests {
 
     #[test]
     fn it_starts_a_session() {
-        let session = Session::new("New Session".into());
+        let session = Session::new(nanoid!(), "New Session".into());
         let session_id = session.id.clone();
         let data = Data::new();
         data.add_session(session).unwrap();
@@ -234,7 +233,7 @@ mod tests {
 
     #[test]
     fn it_stops_a_session() {
-        let session = Session::new("New Session".into());
+        let session = Session::new(nanoid!(), "New Session".into());
         let session_id = session.id.clone();
         let data = Data::new();
         data.add_session(session).unwrap();
@@ -248,7 +247,7 @@ mod tests {
 
     #[tokio::test]
     async fn it_gets_stats() {
-        let session = Session::new("New Session".into());
+        let session = Session::new(nanoid!(), "New Session".into());
         let session_id = session.id.clone();
         let data = Data::new();
         data.add_session(session).unwrap();
@@ -265,7 +264,7 @@ mod tests {
     fn it_creates_a_peer_connection() {
         tracing_subscriber::fmt::init();
         let (_api, factory, mut video_source) = peer_connection_params();
-        let session = Session::new("New Session".into());
+        let session = Session::new(nanoid!(), "New Session".into());
         let session_id = session.id.clone();
         let data = Data::new();
         data.add_session(session).unwrap();
