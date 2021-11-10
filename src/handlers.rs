@@ -29,17 +29,6 @@ fn responder<T: Debug>(tag: &str, response: T) -> Result<Response<T>, Status> {
     Ok(Response::new(response))
 }
 
-impl From<webrtc::SdpType> for libwebrtc::sdp::SdpType {
-    fn from(sdp_type: webrtc::SdpType) -> Self {
-        match sdp_type {
-            webrtc::SdpType::Offer => Self::Offer,
-            webrtc::SdpType::Pranswer => Self::PrAnswer,
-            webrtc::SdpType::Answer => Self::Answer,
-            webrtc::SdpType::Rollback => Self::Rollback,
-        }
-    }
-}
-
 impl From<webrtc::SdpType> for ArcasSDPType {
     fn from(sdp_type: webrtc::SdpType) -> Self {
         match sdp_type {
