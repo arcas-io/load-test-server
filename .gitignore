@@ -1,1 +1,4 @@
 .env
+perf.data*
+stacks.folded
+flamegraph.svg

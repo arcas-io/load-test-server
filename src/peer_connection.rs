@@ -2,30 +2,18 @@ use crate::error::{Result, ServerError};
 use crate::metrics::{write_video_rx_stats, write_video_tx_stats};
 
 use core::fmt;
-use cxx::{SharedPtr, UniquePtr};
-use lazy_static::__Deref;
-use libwebrtc::ffi::rtp_transceiver::C_RtpTransceiverDirection;
-use libwebrtc::ffi::sdp::SdpType;
-use libwebrtc::ffi::stats_collector::Rs_VideoSenderStats;
-use libwebrtc::peerconnection::{
-    IceServer, PeerConnection as WebRtcPeerConnection, RTCConfiguration,
-};
-use libwebrtc::peerconnection_factory::PeerConnectionFactory;
-use libwebrtc::peerconnection_observer::{PeerConnectionObserver, PeerConnectionObserverTrait};
-use libwebrtc::rtp_transceiver::RtpTransceiverInit;
-use libwebrtc::rust_video_track_source::RustTrackVideoSource;
-use libwebrtc::sdp::SessionDescription;
-use libwebrtc::stats_collector::{DummyRTCStatsCollector, RTCStatsCollectorCallback};
-use libwebrtc::video_track::VideoTrack;
+use cxx::UniquePtr;
+use libwebrtc::now;
+use libwebrtc::video_frame::{AsCxxVideoFrame, RawVideoFrame};
 use libwebrtc_sys::ffi::{
     create_arcas_video_track_source, ArcasICECandidate, ArcasICEServer, ArcasPeerConnection,
     ArcasPeerConnectionConfig, ArcasPeerConnectionFactory, ArcasPeerConnectionObserver,
     ArcasRTCConfiguration, ArcasRTPVideoTransceiver, ArcasSDPSemantics, ArcasSDPType,
     ArcasSessionDescription, ArcasVideoSenderStats, ArcasVideoTrack, ArcasVideoTrackSource,
 };
-use libwebrtc_sys::peer_connection::PeerConnectionObserverImpl;
 use libwebrtc_sys::{
-    peer_connection, ArcasRustCreateSessionDescriptionObserver, ArcasRustRTCStatsCollectorCallback,
+    peer_connection::{self, PeerConnectionObserverImpl},
+    ArcasRustCreateSessionDescriptionObserver, ArcasRustRTCStatsCollectorCallback,
     ArcasRustSetSessionDescriptionObserver,
 };
 use log::debug;
@@ -43,7 +31,7 @@ pub(crate) struct PeerConnection<'a> {
     pub(crate) name: String,
     pub(crate) webrtc_peer_connection: UniquePtr<ArcasPeerConnection<'a>>,
     pub(crate) receiver: Receiver<UniquePtr<ArcasICECandidate>>,
-    observer: SharedPtr<ArcasPeerConnectionObserver>,
+    observer: UniquePtr<ArcasPeerConnectionObserver>,
 }
 
 impl<'a> fmt::Debug for PeerConnection<'a> {
@@ -127,8 +115,6 @@ impl peer_connection::PeerConnectionObserverImpl for ChannelPeerConnectionObserv
 
     fn on_add_track(&self, receiver: UniquePtr<libwebrtc_sys::ffi::ArcasRTPReceiver>) {}
 
-    fn on_track(&self, transceiver: UniquePtr<libwebrtc_sys::ffi::ArcasRTPTransceiver>) {}
-
     fn on_remove_track(&self, receiver: UniquePtr<libwebrtc_sys::ffi::ArcasRTPReceiver>) {}
 
     fn on_interesting_usage(&self, pattern: i32) {}
@@ -142,7 +128,7 @@ impl<'a> PeerConnection<'a> {
         name: String,
     ) -> Result<PeerConnection<'a>> {
         let (tx, rx) = tokio::sync::mpsc::channel::<UniquePtr<ArcasICECandidate>>(10);
-        let observer = libwebrtc_sys::ffi::create_peer_connection_observer(Box::new(
+        let mut observer = libwebrtc_sys::ffi::create_peer_connection_observer(Box::new(
             peer_connection::PeerConnectionObserverProxy::new(Box::new(
                 ChannelPeerConnectionObserver { sender: tx },
             )),
@@ -150,12 +136,10 @@ impl<'a> PeerConnection<'a> {
         debug!("created pc observer");
 
         let config = Self::rtc_config();
-        let webrtc_peer_connection = peer_connection_factory.create_peer_connection(
-            config,
-            // We have multiple references to this same pointer so we must
-            // clone such that rust has one and C++ has another similar to an Arc.
-            observer.clone(),
-        );
+        let webrtc_peer_connection = unsafe {
+            peer_connection_factory
+                .create_peer_connection(config, observer.pin_mut().get_unchecked_mut())
+        };
         debug!("created peerconnection");
 
         // let track = peer_connection_factory.create_video_track("test".into(), video_source);
@@ -213,7 +197,7 @@ impl<'a> PeerConnection<'a> {
                     tx.send(session_description)
                         .expect("Can send set desc message");
                 }),
-                Box::new(move |_err| assert!(false, "Failed to set description")),
+                Box::new(move |_err| panic!("Failed to set description")),
             ),
         ));
 
@@ -231,7 +215,7 @@ impl<'a> PeerConnection<'a> {
                     tx.send(session_description)
                         .expect("Can send set desc message");
                 }),
-                Box::new(move |_err| assert!(false, "Failed to set description")),
+                Box::new(move |_err| panic!("Failed to set description")),
             ),
         ));
 
@@ -249,7 +233,7 @@ impl<'a> PeerConnection<'a> {
             Box::new(move || {
                 set_tx.send(1).expect("Can send set desc message");
             }),
-            Box::new(move |_err| assert!(false, "Failed to set description")),
+            Box::new(move |_err| panic!("Failed to set description")),
         );
         let sdp_create_result = libwebrtc_sys::ffi::create_arcas_session_description(sdp_type, sdp);
         if !sdp_create_result.ok {
@@ -276,7 +260,7 @@ impl<'a> PeerConnection<'a> {
             Box::new(move || {
                 set_tx.send(1).expect("Can send set desc message");
             }),
-            Box::new(move |_err| assert!(false, "Failed to set description")),
+            Box::new(move |_err| panic!("Failed to set description")),
         );
         let sdp_create_result = libwebrtc_sys::ffi::create_arcas_session_description(sdp_type, sdp);
         if !sdp_create_result.ok {
@@ -338,14 +322,13 @@ impl<'a> PeerConnection<'a> {
         height: i32,
     ) {
         debug!("creating media stream");
-        let rx: std::sync::mpsc::Receiver<bytes::BytesMut> =
-            media_pipeline::create_and_start_appsink_pipeline(launch.as_str()).unwrap();
+        let rx = media_pipeline::create_and_start_appsink_pipeline(launch.as_str()).unwrap();
 
         thread::spawn(move || {
             while let Ok(buf) = rx.recv() {
-                unsafe {
-                    src.push_i420_data(width, height, width, width / 2, width / 2, buf.as_ptr());
-                }
+                let timestamp = now::now().unwrap();
+                let frame = RawVideoFrame::create(width, height, timestamp, buf.into()).unwrap();
+                src.push_frame(frame.as_cxx_video_frame_ref().unwrap());
             }
         });
     }
@@ -398,7 +381,6 @@ impl<'a> PeerConnection<'a> {
 pub(crate) mod tests {
 
     use super::*;
-    use libwebrtc::rust_video_track_source::RustTrackVideoSource;
     use libwebrtc_sys::ffi::ArcasAPI;
     use nanoid::nanoid;
     use tokio::time::{sleep, Duration};
