@@ -1,9 +1,9 @@
 use crate::data::SharedState;
-use crate::peer_connection::PeerConnection;
+use crate::peer_connection::PeerConnectionManager;
 use crate::server::webrtc;
 use crate::session::Session;
-use crate::ServerError;
-use crate::{call_peer_connection, call_session, get_session_attribute};
+use crate::{call_session, get_session_attribute};
+use libwebrtc::sdp::{SDPType, SessionDescription};
 use libwebrtc_sys::ffi::ArcasSDPType;
 use log::info;
 use std::fmt::Debug;
@@ -29,13 +29,13 @@ fn responder<T: Debug>(tag: &str, response: T) -> Result<Response<T>, Status> {
     Ok(Response::new(response))
 }
 
-impl From<webrtc::SdpType> for ArcasSDPType {
+impl From<webrtc::SdpType> for SDPType {
     fn from(sdp_type: webrtc::SdpType) -> Self {
         match sdp_type {
-            webrtc::SdpType::Offer => ArcasSDPType::kOffer,
-            webrtc::SdpType::Pranswer => ArcasSDPType::kPrAnswer,
-            webrtc::SdpType::Answer => ArcasSDPType::kAnswer,
-            webrtc::SdpType::Rollback => ArcasSDPType::kRollback,
+            webrtc::SdpType::Offer => SDPType::Offer,
+            webrtc::SdpType::Pranswer => SDPType::PrAnswer,
+            webrtc::SdpType::Answer => SDPType::Answer,
+            webrtc::SdpType::Rollback => SDPType::Rollback,
         }
     }
 }
@@ -47,7 +47,7 @@ impl WebRtc for SharedState {
         request: Request<CreateSessionRequest>,
     ) -> Result<Response<CreateSessionResponse>, Status> {
         let name = requester("create_session", request).name;
-        let session = Session::new(name);
+        let session = Session::new(name)?;
         let session_id = session.id.clone();
         self.data.add_session(session)?;
         let reply = webrtc::CreateSessionResponse { session_id };
@@ -103,23 +103,16 @@ impl WebRtc for SharedState {
         let CreatePeerConnectionRequest { name, session_id } =
             requester("create_peer_connection", request);
         let peer_connection_id = nanoid::nanoid!();
-
-        let video_source_lock =
-            get_session_attribute!(self, session_id.clone(), video_source).clone();
-        let mut video_source = video_source_lock.lock();
+        let peer_factory =
+            &get_session_attribute!(self, session_id.clone(), peer_connection_factory);
         // create the peer connection
-        let peer_connection = PeerConnection::new(
-            self.peer_connection_factory.as_ref().unwrap(),
-            video_source.as_mut().unwrap(),
-            peer_connection_id.clone(),
-            name.clone(),
-        )?;
+        let session = self.data.get_session(&session_id)?;
+        let peer_connection =
+            PeerConnectionManager::new(peer_factory, peer_connection_id.clone(), name.clone())?;
 
         // add the peer connection to the session
-        call_session!(self, session_id, add_peer_connection, peer_connection)?;
-
+        session.add_peer_connection(peer_connection)?;
         let reply = webrtc::CreatePeerConnectionResponse { peer_connection_id };
-
         responder("create_peer_connection", reply)
     }
 
@@ -130,8 +123,9 @@ impl WebRtc for SharedState {
         let request = requester("create_offer", request);
         let session_id = request.session_id;
         let peer_connection_id = request.peer_connection_id;
-
-        let sdp = call_peer_connection!(self, session_id, peer_connection_id, create_offer)?;
+        let session = self.data.get_session(&session_id)?;
+        let pc = session.value().get_peer_connection(&peer_connection_id)?;
+        let sdp = pc.value().create_offer().await?;
 
         let reply = CreateSdpResponse {
             sdp: sdp.to_string(),
@@ -150,8 +144,10 @@ impl WebRtc for SharedState {
         let request = requester("create_answer", request);
         let session_id = request.session_id;
         let peer_connection_id = request.peer_connection_id;
+        let session = self.data.get_session(&session_id)?;
+        let pc = session.value().get_peer_connection(&peer_connection_id)?;
 
-        let sdp = call_peer_connection!(self, session_id, peer_connection_id, create_answer)?;
+        let sdp = pc.value().create_answer().await?;
 
         let reply = CreateSdpResponse {
             sdp: sdp.to_string(),
@@ -169,19 +165,13 @@ impl WebRtc for SharedState {
     ) -> Result<tonic::Response<SetSdpResponse>, tonic::Status> {
         let request = requester("set_local_description", request);
         let sdp_type = request.sdp_type();
-        let sdp = request.sdp;
         let session_id = request.session_id;
         let peer_connection_id = request.peer_connection_id;
-        let sdp_copy = sdp.clone();
-
-        call_peer_connection!(
-            self,
-            session_id,
-            peer_connection_id,
-            set_local_description,
-            sdp_type.into(),
-            sdp
-        )?;
+        let session = self.data.get_session(&session_id)?;
+        let pc = session.value().get_peer_connection(&peer_connection_id)?;
+        pc.value()
+            .set_local_description(sdp_type.into(), request.sdp)
+            .await?;
 
         let reply = SetSdpResponse {
             session_id,
@@ -201,16 +191,11 @@ impl WebRtc for SharedState {
         let sdp = request.sdp;
         let session_id = request.session_id;
         let peer_connection_id = request.peer_connection_id;
-        let sdp_copy = sdp.clone();
-
-        call_peer_connection!(
-            self,
-            session_id,
-            peer_connection_id,
-            set_remote_description,
-            sdp_type.into(),
-            sdp
-        )?;
+        let session = self.data.get_session(&session_id)?;
+        let pc = session.value().get_peer_connection(&peer_connection_id)?;
+        pc.value()
+            .set_remote_description(sdp_type.into(), sdp)
+            .await?;
 
         let reply = SetSdpResponse {
             session_id,
@@ -230,19 +215,14 @@ impl WebRtc for SharedState {
         let peer_connection_id = request.peer_connection_id;
         let _track_id = request.track_id;
         let track_label = request.track_label;
-        let video_source_lock =
-            get_session_attribute!(self, session_id.clone(), video_source).clone();
-        let mut video_source = video_source_lock.lock();
+        let session = self.data.get_session(&session_id)?;
+        let pc = session.value().get_peer_connection(&peer_connection_id)?;
+        let video_source = &session.value().video_source;
+        let peer_factory = &session.value().peer_connection_factory;
 
-        call_peer_connection!(
-            self,
-            session_id,
-            peer_connection_id,
-            add_track,
-            self.peer_connection_factory.as_ref().unwrap(),
-            video_source.as_mut().unwrap(),
-            track_label
-        )?;
+        pc.value()
+            .add_track(peer_factory, video_source, track_label)
+            .await?;
 
         let reply = Empty {};
 
@@ -256,26 +236,19 @@ impl WebRtc for SharedState {
         let request = requester("add_transceiver", request);
         let session_id = request.session_id;
         let peer_connection_id = request.peer_connection_id;
+        let session = self.data.get_session(&session_id)?;
+        let pc = session.value().get_peer_connection(&peer_connection_id)?;
         let _track_id = request.track_id;
-        let track_label = if request.track_label.len() == 0 {
+        let track_label = if request.track_label.is_empty() {
             nanoid::nanoid!()
         } else {
             request.track_label
         };
-        let video_source_lock =
-            get_session_attribute!(self, session_id.clone(), video_source).clone();
-        let mut video_source = video_source_lock.lock();
-
-        call_peer_connection!(
-            self,
-            session_id,
-            peer_connection_id,
-            add_transceiver,
-            self.peer_connection_factory.as_ref().unwrap(),
-            video_source.as_mut().unwrap(),
-            track_label
-        )?;
-
+        let peer_factory = &session.value().peer_connection_factory;
+        let video_source = &session.value().video_source;
+        pc.value()
+            .add_transceiver(peer_factory, video_source, track_label)
+            .await?;
         let reply = Empty {};
 
         responder("add_transceiver", reply)

@@ -1,18 +1,21 @@
 use crate::error::{Result, ServerError};
 use crate::helpers::elapsed;
-use crate::peer_connection::PeerConnection;
+use crate::peer_connection::PeerConnectionManager;
 use crate::stats::{get_stats, Stats};
 use core::fmt;
-use cxx::UniquePtr;
+use dashmap::mapref::one::{Ref, RefMut};
 use dashmap::DashMap;
-use libwebrtc_sys::ffi::{ArcasVideoTrack, ArcasVideoTrackSource};
-use log::info;
+use libwebrtc::factory::Factory;
+use libwebrtc::peer_connection::PeerConnectionFactory;
+use libwebrtc::raw_video_frame_producer::{GStreamerRawFrameProducer, RawFrameProducer};
+use libwebrtc::video_track_source::VideoTrackSource;
+use log::{error, info};
 use nanoid::nanoid;
 use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::SystemTime;
 
-pub(crate) type PeerConnections = DashMap<String, PeerConnection<'static>>;
+pub(crate) type PeerConnections = DashMap<String, PeerConnectionManager>;
 
 #[derive(Debug, Clone, PartialEq, strum::ToString)]
 pub(crate) enum State {
@@ -25,10 +28,13 @@ pub(crate) struct Session {
     pub(crate) id: String,
     pub(crate) name: String,
     pub(crate) peer_connections: PeerConnections,
-    pub(crate) video_source: Arc<Mutex<UniquePtr<ArcasVideoTrackSource>>>,
+    pub(crate) video_source: VideoTrackSource,
     pub(crate) state: State,
     pub(crate) start_time: Option<SystemTime>,
     pub(crate) stop_time: Option<SystemTime>,
+    factory: Factory,
+    pub(crate) peer_connection_factory: PeerConnectionFactory,
+    frame_producer: GStreamerRawFrameProducer,
 }
 
 impl fmt::Debug for Session {
@@ -47,20 +53,25 @@ impl fmt::Debug for Session {
 }
 
 impl Session {
-    pub(crate) fn new(name: String) -> Self {
+    pub(crate) fn new(name: String) -> Result<Self> {
         let id = nanoid!();
         let peer_connections: PeerConnections = DashMap::new();
-        let video_source = PeerConnection::file_video_source();
+        let (video_source, frame_producer) = PeerConnectionManager::file_video_source()?;
+        let factory = Factory::new();
+        let peer_connection_factory = factory.create_peer_connection_factory()?;
 
-        Self {
+        Ok(Self {
             id,
             name,
             peer_connections,
-            video_source: Arc::new(Mutex::new(video_source)),
+            video_source,
             state: State::Created,
             start_time: None,
             stop_time: None,
-        }
+            factory,
+            peer_connection_factory,
+            frame_producer,
+        })
     }
 
     pub(crate) fn start(&mut self) -> Result<()> {
@@ -97,13 +108,18 @@ impl Session {
         Ok(())
     }
 
-    pub(crate) fn peer_connection_stats(&self) {
-        self.peer_connections
-            .iter()
-            .for_each(|pc| pc.value().export_stats(&self.id.to_owned()));
+    pub(crate) async fn peer_connection_stats(&self) {
+        for pc in self.peer_connections.iter() {
+            match pc.value().export_stats(&self.id.to_owned()).await {
+                Ok(_) => {}
+                Err(err) => {
+                    error!("Failed to export stats for peer connection: {}", err);
+                }
+            }
+        }
     }
 
-    pub(crate) async fn get_stats(&mut self) -> Result<Stats> {
+    pub(crate) async fn get_stats(&self) -> Result<Stats> {
         info!("Attempting to get stats for session {}", self.id);
 
         let stats = get_stats(self).await?;
@@ -113,10 +129,7 @@ impl Session {
         Ok(stats)
     }
 
-    pub(crate) fn add_peer_connection(
-        &mut self,
-        peer_connection: PeerConnection<'static>,
-    ) -> Result<()> {
+    pub(crate) fn add_peer_connection(&self, peer_connection: PeerConnectionManager) -> Result<()> {
         info!(
             "Attempting to add peer connection {} for session {}",
             peer_connection.id, self.id
@@ -134,12 +147,32 @@ impl Session {
         Ok(())
     }
 
+    pub(crate) fn get_peer_connection(
+        &self,
+        id: &str,
+    ) -> Result<Ref<String, PeerConnectionManager>> {
+        info!(
+            "Attempting to get peer connection {} for session {}",
+            id, self.id
+        );
+
+        Ok(self.peer_connections.get(id).ok_or_else(|| {
+            ServerError::InvalidPeerConnection(format!("Peer connection {} not found", id))
+        })?)
+    }
+
     pub(crate) fn elapsed_time(&self) -> Option<u64> {
         match self.state {
             State::Created => None,
             State::Started => elapsed(self.start_time, Some(SystemTime::now())),
             State::Stopped => elapsed(self.start_time, self.stop_time),
         }
+    }
+}
+
+impl Drop for Session {
+    fn drop(&mut self) {
+        self.frame_producer.cancel();
     }
 }
 
@@ -187,21 +220,6 @@ macro_rules! get_session_attribute {
     };
 }
 
-#[macro_export]
-macro_rules! call_peer_connection {
-    ($shared_state:expr, $session_id:expr, $peer_connection_id:tt, $fn:ident $(, $args:expr)*) => {
-        $shared_state
-            .data
-            .sessions
-            .get(&$session_id)
-            .ok_or_else(|| ServerError::InvalidSessionError($session_id.clone()))?
-                .peer_connections
-                .get_mut(&$peer_connection_id)
-                .ok_or_else(|| ServerError::InvalidPeerConnection($peer_connection_id.clone()))?
-                .$fn($($args),*)
-    };
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -210,7 +228,7 @@ mod tests {
 
     #[test]
     fn it_adds_a_session() {
-        let session = Session::new("New Session".into());
+        let session = Session::new("New Session".into()).unwrap();
         let session_id = session.id.clone();
         let data = Data::new();
         data.add_session(session).unwrap();
@@ -220,7 +238,7 @@ mod tests {
 
     #[test]
     fn it_starts_a_session() {
-        let session = Session::new("New Session".into());
+        let session = Session::new("New Session".into()).unwrap();
         let session_id = session.id.clone();
         let data = Data::new();
         data.add_session(session).unwrap();
@@ -233,7 +251,7 @@ mod tests {
 
     #[test]
     fn it_stops_a_session() {
-        let session = Session::new("New Session".into());
+        let session = Session::new("New Session".into()).unwrap();
         let session_id = session.id.clone();
         let data = Data::new();
         data.add_session(session).unwrap();
@@ -247,7 +265,7 @@ mod tests {
 
     #[tokio::test]
     async fn it_gets_stats() {
-        let session = Session::new("New Session".into());
+        let session = Session::new("New Session".into()).unwrap();
         let session_id = session.id.clone();
         let data = Data::new();
         data.add_session(session).unwrap();
@@ -264,7 +282,7 @@ mod tests {
     fn it_creates_a_peer_connection() {
         tracing_subscriber::fmt::init();
         let (_api, factory, mut video_source) = peer_connection_params();
-        let session = Session::new("New Session".into());
+        let session = Session::new("New Session".into()).unwrap();
         let session_id = session.id.clone();
         let data = Data::new();
         data.add_session(session).unwrap();
@@ -274,13 +292,7 @@ mod tests {
 
         let pc_id = nanoid!();
         {
-            let pc = PeerConnection::new(
-                factory.as_ref().unwrap(),
-                video_source.as_mut().unwrap(),
-                pc_id.clone(),
-                "new".into(),
-            )
-            .unwrap();
+            let pc = PeerConnectionManager::new(&factory, pc_id.clone(), "new".into()).unwrap();
             session.add_peer_connection(pc).unwrap();
 
             assert_eq!(session.peer_connections.get(&pc_id).unwrap().id, pc_id);

@@ -1,17 +1,16 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::error::Result;
+use crate::error::{Result, ServerError};
+use crate::peer_connection::PeerConnectionManager;
 use crate::session::Session;
 use cxx::UniquePtr;
+use dashmap::mapref::one::{Ref, RefMut};
 use dashmap::DashMap;
 use log::info;
 
 pub(crate) struct SharedState {
     pub(crate) data: Arc<Data>,
-    pub(crate) peer_connection_factory:
-        UniquePtr<libwebrtc_sys::ffi::ArcasPeerConnectionFactory<'static>>,
-    pub(crate) arcas_api: UniquePtr<libwebrtc_sys::ffi::ArcasAPI<'static>>,
 }
 
 impl std::fmt::Debug for SharedState {
@@ -47,6 +46,25 @@ impl Data {
 
         Ok(())
     }
+
+    pub(crate) fn get_session(&self, id: &str) -> Result<Ref<String, Session>> {
+        let map = &self.sessions;
+
+        let dashmap_value = map
+            .get(id)
+            .ok_or_else(|| ServerError::InvalidSessionError(id.to_string()))?;
+
+        Ok(dashmap_value)
+    }
+
+    pub(crate) fn get_session_mut(&self, id: &str) -> Result<RefMut<String, Session>> {
+        let dashmap_value = self
+            .sessions
+            .get_mut(id)
+            .ok_or_else(|| ServerError::InvalidSessionError(id.to_string()))?;
+
+        Ok(dashmap_value)
+    }
 }
 
 impl SharedState {
@@ -56,9 +74,9 @@ impl SharedState {
             let mut interval = tokio::time::interval(Duration::from_secs(1));
             interval.tick().await;
             loop {
-                data.sessions
-                    .iter()
-                    .for_each(|s| s.value().peer_connection_stats());
+                for session in &data.sessions {
+                    session.value().peer_connection_stats().await;
+                }
                 interval.tick().await;
             }
         });
@@ -72,7 +90,7 @@ mod tests {
 
     #[test]
     fn it_adds_a_session() {
-        let session = Session::new("New Session".into());
+        let session = Session::new("New Session".into()).unwrap();
         let session_id = session.id.clone();
         let data = Data::new();
         data.add_session(session).unwrap();
