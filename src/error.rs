@@ -1,3 +1,4 @@
+use libwebrtc::error::WebRTCError;
 use log::error;
 use std::net::AddrParseError;
 use std::sync::{MutexGuard, PoisonError};
@@ -49,6 +50,9 @@ pub enum ServerError {
 
     #[error("Parse error: {0}")]
     ParseError(String),
+
+    #[error("WebRTC error: {0}")]
+    WebRTCError(String),
 }
 
 impl From<AddrParseError> for ServerError {
@@ -69,5 +73,19 @@ impl From<ServerError> for Status {
     fn from(error: ServerError) -> Status {
         error!("{:?}", error);
         Status::internal(error.to_string())
+    }
+}
+
+impl From<&ServerError> for Status {
+    fn from(error: &ServerError) -> Status {
+        error!("{:?}", error);
+        Status::internal(error.to_string())
+    }
+}
+
+impl From<WebRTCError> for ServerError {
+    fn from(value: WebRTCError) -> Self {
+        // A little lazy to have a single variant but we can improve this in the future.
+        Self::WebRTCError(value.to_string())
     }
 }

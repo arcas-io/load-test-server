@@ -1,5 +1,4 @@
 use crate::config::CONFIG;
-use std::ffi::c_void;
 
 use lazy_static::lazy_static;
 use libwebrtc_sys::ffi::{ArcasVideoReceiverStats, ArcasVideoSenderStats};

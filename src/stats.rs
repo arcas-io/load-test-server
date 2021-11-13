@@ -15,8 +15,8 @@ pub(crate) struct SessionStats {
     pub(crate) elapsed_time: u64,
 }
 
-impl From<&mut Session> for SessionStats {
-    fn from(session: &mut Session) -> SessionStats {
+impl From<&Session> for SessionStats {
+    fn from(session: &Session) -> SessionStats {
         SessionStats {
             id: session.id.clone(),
             name: session.name.clone(),
@@ -101,7 +101,7 @@ pub(crate) struct Stats {
     pub(crate) peer_connections: Vec<PeerConnectionStats>,
 }
 
-pub(crate) async fn get_stats(session: &mut Session) -> Result<Stats> {
+pub(crate) async fn get_stats(session: &Session) -> Result<Stats> {
     let keys: Vec<String> = session
         .peer_connections
         .iter()
@@ -112,16 +112,16 @@ pub(crate) async fn get_stats(session: &mut Session) -> Result<Stats> {
     for peer_connection_id in keys {
         // take the peer connection out of the hashmap so that stats can be
         // pulled out of it (cannot just use a reference)
+        let session_id = session.id.clone();
+        let peer_id = peer_connection_id.clone();
         let peer_connection = session
             .peer_connections
             .remove(&peer_connection_id)
-            .ok_or_else(|| {
-                ServerError::GetStatsError(session.id.clone(), peer_connection_id.clone())
-            })?
+            .ok_or_else(|| ServerError::GetStatsError(session_id, peer_id))?
             .1;
 
         // get the peer connection's stats
-        let video_sender = peer_connection.get_stats();
+        let video_sender = peer_connection.get_stats().await?;
         let peer_connection_stats = PeerConnectionStats {
             id: peer_connection.id.clone(),
             name: peer_connection.name.clone(),
@@ -153,7 +153,7 @@ mod tests {
 
     #[tokio::test]
     async fn it_gets_stats() {
-        let session = Session::new(nanoid!(), "New Session".into());
+        let session = Session::new(nanoid!(), "New Session".into()).unwrap();
         let session_id = session.id.clone();
         let data = Data::new();
         data.add_session(session).unwrap();
