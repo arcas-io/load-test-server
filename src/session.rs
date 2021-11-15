@@ -29,7 +29,6 @@ pub(crate) struct Session {
     pub(crate) state: State,
     pub(crate) start_time: Option<SystemTime>,
     pub(crate) stop_time: Option<SystemTime>,
-    factory: Factory,
     pub(crate) peer_connection_factory: PeerConnectionFactory,
     frame_producer: GStreamerRawFrameProducer,
 }
@@ -64,7 +63,6 @@ impl Session {
             state: State::Created,
             start_time: None,
             stop_time: None,
-            factory,
             peer_connection_factory,
             frame_producer,
         })
@@ -218,6 +216,8 @@ macro_rules! get_session_attribute {
 
 #[cfg(test)]
 mod tests {
+    use core::time;
+
     use super::*;
     use crate::data::Data;
     use crate::peer_connection::tests::peer_connection_params;
@@ -225,7 +225,7 @@ mod tests {
 
     #[test]
     fn it_adds_a_session() {
-        let session = Session::new(nanoid!(), "New Session".into());
+        let session = Session::new(nanoid!(), "New Session".into()).unwrap();
         let session_id = session.id.clone();
         let data = Data::new();
         data.add_session(session).unwrap();
@@ -235,7 +235,7 @@ mod tests {
 
     #[test]
     fn it_starts_a_session() {
-        let session = Session::new(nanoid!(), "New Session".into());
+        let session = Session::new(nanoid!(), "New Session".into()).unwrap();
         let session_id = session.id.clone();
         let data = Data::new();
         data.add_session(session).unwrap();
@@ -248,7 +248,7 @@ mod tests {
 
     #[test]
     fn it_stops_a_session() {
-        let session = Session::new(nanoid!(), "New Session".into());
+        let session = Session::new(nanoid!(), "New Session".into()).unwrap();
         let session_id = session.id.clone();
         let data = Data::new();
         data.add_session(session).unwrap();
@@ -262,7 +262,7 @@ mod tests {
 
     #[tokio::test]
     async fn it_gets_stats() {
-        let session = Session::new(nanoid!(), "New Session".into());
+        let session = Session::new(nanoid!(), "New Session".into()).unwrap();
         let session_id = session.id.clone();
         let data = Data::new();
         data.add_session(session).unwrap();
@@ -278,8 +278,8 @@ mod tests {
     #[test]
     fn it_creates_a_peer_connection() {
         tracing_subscriber::fmt::init();
-        let (_api, factory, mut video_source) = peer_connection_params();
-        let session = Session::new(nanoid!(), "New Session".into());
+        let (_api, factory, _video_source) = peer_connection_params();
+        let session = Session::new(nanoid!(), "New Session".into()).unwrap();
         let session_id = session.id.clone();
         let data = Data::new();
         data.add_session(session).unwrap();
@@ -293,7 +293,7 @@ mod tests {
             session.add_peer_connection(pc).unwrap();
 
             assert_eq!(session.peer_connections.get(&pc_id).unwrap().id, pc_id);
-            std::thread::sleep_ms(1000);
+            std::thread::sleep(time::Duration::from_millis(1000));
         }
     }
 }
