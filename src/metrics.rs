@@ -1,5 +1,4 @@
 use crate::config::CONFIG;
-use std::ffi::c_void;
 
 use lazy_static::lazy_static;
 use libwebrtc_sys::ffi::{ArcasVideoReceiverStats, ArcasVideoSenderStats};
@@ -80,7 +79,11 @@ pub fn write_video_tx_stats(stat: &ArcasVideoSenderStats, pc_id: &str, sess_id: 
         &format!("ssrc: {}", stat.ssrc),
     ];
 
-    let _ = METRICS.gauge("pc.video.tx.packets_sent", stat.packets_sent.to_string(), tags);
+    let _ = METRICS.gauge(
+        "pc.video.tx.packets_sent",
+        stat.packets_sent.to_string(),
+        tags,
+    );
     let _ = METRICS.gauge("pc.video.tx.bytes_sent", stat.bytes_sent.to_string(), tags);
     let _ = METRICS.gauge(
         "pc.video.tx.frames_encoded",

@@ -1,15 +1,22 @@
 use crate::error::Result;
 use crate::metrics::{write_video_rx_stats, write_video_tx_stats};
+use crate::webrtc_pool::WebRTCPool;
 
 use core::fmt;
+use libwebrtc::empty_frame_producer::EmptyFrameProducer;
+use libwebrtc::encoded_video_frame_producer::DEFAULT_FPS;
+use libwebrtc::error::WebRTCError;
+
+use libwebrtc::ice_candidate::ICECandidate;
 use libwebrtc::peer_connection::{PeerConnection, PeerConnectionConfig, PeerConnectionFactory};
-use libwebrtc::raw_video_frame_producer::{GStreamerRawFrameProducer, RawFrameProducer};
 use libwebrtc::sdp::{SDPType, SessionDescription};
 use libwebrtc::transceiver::{TransceiverInit, VideoTransceiver};
-use libwebrtc::video_codec::VideoCodec;
+
 use libwebrtc::video_track::VideoTrack;
 use libwebrtc::video_track_source::VideoTrackSource;
 use libwebrtc_sys::ffi::ArcasVideoSenderStats;
+
+use tokio::sync::mpsc::Receiver;
 
 use tracing::warn;
 
@@ -19,6 +26,7 @@ pub(crate) struct PeerConnectionManager {
     pub(crate) id: String,
     pub(crate) name: String,
     pub(crate) webrtc_peer_connection: PeerConnection,
+    pub(crate) pool_id: u32,
 }
 
 impl fmt::Debug for PeerConnectionManager {
@@ -30,6 +38,7 @@ impl fmt::Debug for PeerConnectionManager {
 impl PeerConnectionManager {
     pub(crate) fn new(
         peer_connection_factory: &PeerConnectionFactory,
+        pool_id: u32,
         id: String,
         name: String,
     ) -> Result<PeerConnectionManager> {
@@ -40,6 +49,7 @@ impl PeerConnectionManager {
             id,
             name,
             webrtc_peer_connection,
+            pool_id,
         };
 
         Ok(pc)
@@ -86,21 +96,28 @@ impl PeerConnectionManager {
     /// NOTE: This is *not* async as media calls are generally intended to be run syncrhonously within
     /// libwebrtc.
     fn create_track(
-        peer_connection_factory: &PeerConnectionFactory,
+        pool_id: u32,
+        pool: &WebRTCPool,
         video_source: &VideoTrackSource,
         label: String,
     ) -> Result<VideoTrack> {
-        let value = peer_connection_factory.create_video_track(label, video_source)?;
+        let peer_connection_factory = pool.factory_list.get(&pool_id).ok_or_else(|| {
+            WebRTCError::UnexpectedError(format!("unknown factory id: {}", &pool_id))
+        })?;
+        let value = peer_connection_factory
+            .value()
+            .peer_connection_factory
+            .create_video_track(label, video_source)?;
         Ok(value)
     }
 
     pub(crate) async fn add_track(
         &self,
-        peer_connection_factory: &PeerConnectionFactory,
+        pool: &WebRTCPool,
         video_source: &VideoTrackSource,
         label: String,
     ) -> Result<()> {
-        let track = Self::create_track(peer_connection_factory, video_source, label)?;
+        let track = Self::create_track(self.pool_id, pool, video_source, label)?;
         Ok(self
             .webrtc_peer_connection
             .add_video_track(vec!["0".into()], track)
@@ -109,7 +126,7 @@ impl PeerConnectionManager {
 
     pub(crate) async fn add_transceiver(
         &self,
-        peer_connection_factory: &PeerConnectionFactory,
+        pool: &WebRTCPool,
         video_source: &VideoTrackSource,
         label: String,
     ) -> Result<VideoTransceiver> {
@@ -117,7 +134,7 @@ impl PeerConnectionManager {
             vec!["0".into()],
             libwebrtc::transceiver::TransceiverDirection::SendOnly,
         );
-        let track = Self::create_track(peer_connection_factory, video_source, label)?;
+        let track = Self::create_track(self.pool_id, pool, video_source, label)?;
         let value = self
             .webrtc_peer_connection
             .add_video_transceiver(init, track)
@@ -126,16 +143,20 @@ impl PeerConnectionManager {
     }
 
     // stream a pre-encoded file from gstreamer to avoid encoding overhead
-    pub(crate) fn file_video_source() -> Result<(VideoTrackSource, GStreamerRawFrameProducer)> {
+    pub(crate) fn file_video_source() -> Result<(VideoTrackSource, EmptyFrameProducer)> {
         let (source, source_writer) = VideoTrackSource::create();
-        let codec = VideoCodec::vp9_default();
-        let mut producer =GStreamerRawFrameProducer::new(
-            "filesrc location=static/file.mp4 ! qtdemux name=demux demux.video_0 ! avdec_h264 ! videoconvert ! videoscale".into(), &codec)?;
+        // The empty frame producer ensures we receive the right messages from
+        // the encoder factory without actually sending any frames. These
+        // "empty" frames are most importantly not allocating I420 color space
+        // buffers so are very cheap to generate.
+        let mut producer = EmptyFrameProducer::new(DEFAULT_FPS)?;
         let rx = producer.start()?;
+        let frame = rx.recv().unwrap();
+        source_writer.push_empty_frame(frame).unwrap();
 
         std::thread::spawn(move || {
             while let Ok(frame) = rx.recv() {
-                match source_writer.push_raw_frame(frame) {
+                match source_writer.push_empty_frame(frame) {
                     Ok(_) => {}
                     Err(err) => {
                         warn!("error pushing frame: {}", err);
@@ -161,47 +182,65 @@ impl PeerConnectionManager {
         }
         Ok(())
     }
+
+    pub fn ice_candidates_rx(&mut self) -> Result<Receiver<ICECandidate>> {
+        Ok(self.webrtc_peer_connection.take_ice_candidate_rx()?)
+    }
 }
 
 #[cfg(test)]
 pub(crate) mod tests {
 
     use super::*;
-    use libwebrtc::{factory::Factory, video_track_source::VideoTrackSourceWriter};
+
+    use libwebrtc::video_track_source::VideoTrackSourceWriter;
     use nanoid::nanoid;
+
     use tokio::time::{sleep, Duration};
 
-    pub(crate) fn peer_connection_params() -> (
-        Factory,
-        PeerConnectionFactory,
-        (VideoTrackSource, VideoTrackSourceWriter),
-    ) {
-        let factory = Factory::new();
-        let peer_factory = factory.create_peer_connection_factory().unwrap();
+    pub(crate) fn peer_connection_params(
+    ) -> (WebRTCPool, (VideoTrackSource, VideoTrackSourceWriter)) {
+        let pool = WebRTCPool::new(1).unwrap();
         let source = VideoTrackSource::create();
-        (factory, peer_factory, source)
+        (pool, source)
     }
 
     #[tokio::test]
     async fn it_creates_a_new_peer_connection() {
-        let (_api, factory, mut _video_source) = peer_connection_params();
-        PeerConnectionManager::new(&factory, nanoid!(), "new".into()).unwrap();
+        let (pool, mut _video_source) = peer_connection_params();
+        let factory = pool.factory_list.get(&0).unwrap();
+        PeerConnectionManager::new(&factory.peer_connection_factory, 0, nanoid!(), "new".into())
+            .unwrap();
     }
 
     #[tokio::test]
     async fn it_gets_stats_for_a_peer_connection() {
-        let (_api, factory, mut _video_source) = peer_connection_params();
-        let pc = PeerConnectionManager::new(&factory, nanoid!(), "new".into()).unwrap();
+        let (pool, mut _video_source) = peer_connection_params();
+        let factory = pool.factory_list.get(&0).unwrap();
+        let pc = PeerConnectionManager::new(
+            &factory.peer_connection_factory,
+            0,
+            nanoid!(),
+            "new".into(),
+        )
+        .unwrap();
         pc.get_stats().await.unwrap();
     }
 
     #[tokio::test]
     async fn it_exports_stats_for_a_peer_connection() {
         let session_id = nanoid!();
-        let (_api, factory, _video_source) = peer_connection_params();
+        let (pool, _video_source) = peer_connection_params();
+        let factory = pool.factory_list.get(&0).unwrap();
         let (video_source, _video_writer) = PeerConnectionManager::file_video_source().unwrap();
-        let mut pc = PeerConnectionManager::new(&factory, nanoid!(), "new".into()).unwrap();
-        pc.add_track(&factory, &video_source, "Testlabel".into())
+        let mut pc = PeerConnectionManager::new(
+            &factory.peer_connection_factory,
+            0,
+            nanoid!(),
+            "new".into(),
+        )
+        .unwrap();
+        pc.add_track(&pool, &video_source, "Testlabel".into())
             .await
             .unwrap();
         let offer = pc.create_offer().await.unwrap();
@@ -209,8 +248,13 @@ pub(crate) mod tests {
             .await
             .unwrap();
 
-        let mut pc_recv =
-            PeerConnectionManager::new(&factory, nanoid!(), "new_recv".into()).unwrap();
+        let mut pc_recv = PeerConnectionManager::new(
+            &factory.peer_connection_factory,
+            0,
+            nanoid!(),
+            "new_recv".into(),
+        )
+        .unwrap();
         pc_recv
             .set_remote_description(offer.get_type(), offer.to_string())
             .await
@@ -257,15 +301,29 @@ pub(crate) mod tests {
 
     #[tokio::test]
     async fn it_creates_an_offer() {
-        let (_api, factory, mut _video_source) = peer_connection_params();
-        let pc = PeerConnectionManager::new(&factory, nanoid!(), "new".into()).unwrap();
+        let (pool, mut _video_source) = peer_connection_params();
+        let factory = pool.factory_list.get(&0).unwrap();
+        let pc = PeerConnectionManager::new(
+            &factory.peer_connection_factory,
+            0,
+            nanoid!(),
+            "new".into(),
+        )
+        .unwrap();
         pc.create_offer().await.unwrap();
     }
 
     #[tokio::test]
     async fn it_creates_an_answer() {
-        let (_api, factory, mut _video_source) = peer_connection_params();
-        let pc = PeerConnectionManager::new(&factory, nanoid!(), "new".into()).unwrap();
+        let (pool, mut _video_source) = peer_connection_params();
+        let factory = pool.factory_list.get(&0).unwrap();
+        let pc = PeerConnectionManager::new(
+            &factory.peer_connection_factory,
+            0,
+            nanoid!(),
+            "new".into(),
+        )
+        .unwrap();
         let offer = pc.create_offer().await.unwrap();
         pc.set_remote_description(offer.get_type(), offer.to_string())
             .await
@@ -275,8 +333,15 @@ pub(crate) mod tests {
 
     #[tokio::test]
     async fn it_sets_local_description() {
-        let (_api, factory, mut _video_source) = peer_connection_params();
-        let pc = PeerConnectionManager::new(&factory, nanoid!(), "new".into()).unwrap();
+        let (pool, mut _video_source) = peer_connection_params();
+        let factory = pool.factory_list.get(&0).unwrap();
+        let pc = PeerConnectionManager::new(
+            &factory.peer_connection_factory,
+            0,
+            nanoid!(),
+            "new".into(),
+        )
+        .unwrap();
         let offer = pc.create_offer().await.unwrap();
         pc.set_local_description(offer.get_type(), offer.to_string())
             .await
@@ -285,8 +350,15 @@ pub(crate) mod tests {
 
     #[tokio::test]
     async fn it_sets_remote_description() {
-        let (_api, factory, mut _video_source) = peer_connection_params();
-        let pc = PeerConnectionManager::new(&factory, nanoid!(), "new".into()).unwrap();
+        let (pool, mut _video_source) = peer_connection_params();
+        let factory = pool.factory_list.get(&0).unwrap();
+        let pc = PeerConnectionManager::new(
+            &factory.peer_connection_factory,
+            0,
+            nanoid!(),
+            "new".into(),
+        )
+        .unwrap();
         let offer = pc.create_offer().await.unwrap();
         pc.set_remote_description(offer.get_type(), offer.to_string())
             .await
@@ -295,18 +367,32 @@ pub(crate) mod tests {
 
     #[tokio::test]
     async fn it_adds_a_track() {
-        let (_api, factory, (video_source, _)) = peer_connection_params();
-        let pc = PeerConnectionManager::new(&factory, nanoid!(), "new".into()).unwrap();
-        pc.add_track(&factory, &video_source, "Testlabel".into())
+        let (pool, (video_source, _)) = peer_connection_params();
+        let factory = pool.factory_list.get(&0).unwrap();
+        let pc = PeerConnectionManager::new(
+            &factory.peer_connection_factory,
+            0,
+            nanoid!(),
+            "new".into(),
+        )
+        .unwrap();
+        pc.add_track(&pool, &video_source, "Testlabel".into())
             .await
             .unwrap();
     }
 
     #[tokio::test]
     async fn it_adds_a_transceiver() {
-        let (_api, factory, (video_source, _)) = peer_connection_params();
-        let pc = PeerConnectionManager::new(&factory, nanoid!(), "new".into()).unwrap();
-        pc.add_transceiver(&factory, &video_source, "Testlabel".into())
+        let (pool, (video_source, _)) = peer_connection_params();
+        let factory = pool.factory_list.get(&0).unwrap();
+        let pc = PeerConnectionManager::new(
+            &factory.peer_connection_factory,
+            0,
+            nanoid!(),
+            "new".into(),
+        )
+        .unwrap();
+        pc.add_transceiver(&pool, &video_source, "Testlabel".into())
             .await
             .unwrap();
     }

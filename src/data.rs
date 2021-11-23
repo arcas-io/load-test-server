@@ -2,10 +2,10 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::error::{Result, ServerError};
-use crate::peer_connection::PeerConnectionManager;
+
 use crate::session::Session;
-use cxx::UniquePtr;
-use dashmap::mapref::one::{Ref, RefMut};
+
+use dashmap::mapref::one::Ref;
 use dashmap::DashMap;
 use log::info;
 
@@ -52,15 +52,6 @@ impl Data {
 
         let dashmap_value = map
             .get(id)
-            .ok_or_else(|| ServerError::InvalidSessionError(id.to_string()))?;
-
-        Ok(dashmap_value)
-    }
-
-    pub(crate) fn get_session_mut(&self, id: &str) -> Result<RefMut<String, Session>> {
-        let dashmap_value = self
-            .sessions
-            .get_mut(id)
             .ok_or_else(|| ServerError::InvalidSessionError(id.to_string()))?;
 
         Ok(dashmap_value)
