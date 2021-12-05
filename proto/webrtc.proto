@@ -17,6 +17,7 @@ service WebRtc {
   rpc AddTrack(AddTrackRequest) returns (Empty);
   rpc AddTransceiver(AddTransceiverRequest) returns (Empty);
   rpc Observer(ObserverRequest) returns (stream PeerConnectionObserverMessage);
+  rpc GetTransceivers(GetTransceiversRequest) returns (GetTransceiversResponse);
 }
 
 // Reusable empty message
@@ -74,6 +75,15 @@ message GetStatsResponse {
   repeated PeerConnectionStats peer_connections = 2;
 }
 
+message GetTransceiversRequest {
+  string session_id = 1;
+  string peer_connection_id = 2;
+}
+
+message GetTransceiversResponse {
+  repeated Transceiver transceivers = 1;
+}
+
 // Create PeerConnection
 message CreatePeerConnectionRequest {
   string session_id = 1;
@@ -115,6 +125,27 @@ message IceCandidate {
     string sdp = 1;
     string mid = 2;
     uint32 mline_index = 3;
+}
+
+enum MediaType {
+    AUDIO = 0;
+    VIDEO = 1;
+    DATA = 2;
+    UNSUPPORTED = 3;
+}
+
+enum TransceiverDirection {
+    SENDRECV = 0;
+    SENDONLY = 1;
+    RECVONLY = 2;
+    INACTIVE = 3;
+}
+
+message Transceiver {
+    string id = 1;
+    string mid = 2;
+    TransceiverDirection direction = 3;
+    MediaType media_type = 4;
 }
 
 message PeerConnectionObserverMessage {

@@ -10,7 +10,7 @@ use libwebrtc::error::WebRTCError;
 use libwebrtc::ice_candidate::ICECandidate;
 use libwebrtc::peer_connection::{PeerConnection, PeerConnectionConfig, PeerConnectionFactory};
 use libwebrtc::sdp::{SDPType, SessionDescription};
-use libwebrtc::transceiver::{TransceiverInit, VideoTransceiver};
+use libwebrtc::transceiver::{AudioTransceiver, TransceiverInit, VideoTransceiver};
 
 use libwebrtc::video_track::VideoTrack;
 use libwebrtc::video_track_source::VideoTrackSource;
@@ -185,6 +185,10 @@ impl PeerConnectionManager {
 
     pub fn ice_candidates_rx(&mut self) -> Result<Receiver<ICECandidate>> {
         Ok(self.webrtc_peer_connection.take_ice_candidate_rx()?)
+    }
+
+    pub(crate) async fn get_transceivers(&self) -> (Vec<VideoTransceiver>, Vec<AudioTransceiver>) {
+        self.webrtc_peer_connection.get_transceivers()
     }
 }
 

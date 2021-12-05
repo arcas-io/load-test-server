@@ -5,7 +5,9 @@ use crate::session::Session;
 use crate::{call_session, get_session_attribute};
 use async_stream::stream;
 use futures::Stream;
+use libwebrtc::media_type::MediaType;
 use libwebrtc::sdp::SDPType;
+use libwebrtc::transceiver::{self, TransceiverDirection};
 use log::{error, info};
 use std::fmt::Debug;
 use std::pin::Pin;
@@ -59,6 +61,28 @@ impl From<webrtc::SdpType> for SDPType {
             webrtc::SdpType::Pranswer => SDPType::PrAnswer,
             webrtc::SdpType::Answer => SDPType::Answer,
             webrtc::SdpType::Rollback => SDPType::Rollback,
+        }
+    }
+}
+
+impl From<TransceiverDirection> for webrtc::TransceiverDirection {
+    fn from(d: TransceiverDirection) -> Self {
+        match d {
+            TransceiverDirection::SendRecv => webrtc::TransceiverDirection::Sendrecv,
+            TransceiverDirection::SendOnly => webrtc::TransceiverDirection::Sendonly,
+            TransceiverDirection::RecvOnly => webrtc::TransceiverDirection::Recvonly,
+            TransceiverDirection::Inactive => webrtc::TransceiverDirection::Inactive,
+        }
+    }
+}
+
+impl From<MediaType> for webrtc::MediaType {
+    fn from(d: MediaType) -> Self {
+        match d {
+            MediaType::Audio => webrtc::MediaType::Audio,
+            MediaType::Video => webrtc::MediaType::Video,
+            MediaType::Data => webrtc::MediaType::Data,
+            MediaType::Unsupported => webrtc::MediaType::Unsupported,
         }
     }
 }
@@ -321,6 +345,49 @@ impl WebRtc for SharedState {
         };
 
         Ok(tonic::Response::new(Box::pin(stream_out)))
+    }
+
+    async fn get_transceivers(
+        &self,
+        request: tonic::Request<webrtc::GetTransceiversRequest>,
+    ) -> Result<tonic::Response<webrtc::GetTransceiversResponse>, tonic::Status> {
+        let request = requester("observer", request);
+        let session_id = request.session_id;
+        let peer_connection_id = request.peer_connection_id;
+        let session = self.data.get_session(&session_id)?;
+        let pc = session
+            .value()
+            .peer_connections
+            .get(&peer_connection_id)
+            .ok_or_else(|| tonic::Status::new(tonic::Code::NotFound, "PeerConnection not found"))?;
+        let (video, audio) = pc.get_transceivers().await;
+        let mut result = vec![];
+        video.into_iter().for_each(|t| {
+            let direction: webrtc::TransceiverDirection = t.direction().into();
+            let media_type: webrtc::MediaType = t.media_type().into();
+            let transceiver = webrtc::Transceiver {
+                id: "".to_owned(),
+                mid: t.mid(),
+                direction: direction.into(),
+                media_type: media_type.into(),
+            };
+            result.push(transceiver);
+        });
+        audio.into_iter().for_each(|t| {
+            let direction: webrtc::TransceiverDirection = t.direction().into();
+            let media_type: webrtc::MediaType = t.media_type().into();
+            let transceiver = webrtc::Transceiver {
+                id: "".to_owned(),
+                mid: t.mid(),
+                direction: direction.into(),
+                media_type: media_type.into(),
+            };
+            result.push(transceiver);
+        });
+        let reply = webrtc::GetTransceiversResponse {
+            transceivers: result,
+        };
+        responder("get_transceivers", reply)
     }
 }
 
