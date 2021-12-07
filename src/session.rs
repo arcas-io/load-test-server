@@ -215,8 +215,6 @@ macro_rules! get_session_attribute {
 
 #[cfg(test)]
 mod tests {
-    use core::time;
-
     use super::*;
     use crate::data::Data;
     use crate::peer_connection::tests::peer_connection_params;
@@ -279,7 +277,7 @@ mod tests {
         tracing_subscriber::fmt::init();
         let (pool, _video_source) = peer_connection_params();
         let factory = pool.factory_list.get(&0).unwrap();
-        let session = Session::new("New Session".into()).unwrap();
+        let session = Session::new(nanoid!(), "New Session".into()).unwrap();
         let session_id = session.id.clone();
         let data = Data::new();
         data.add_session(session).unwrap();
