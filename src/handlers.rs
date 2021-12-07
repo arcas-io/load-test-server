@@ -3,17 +3,12 @@ use crate::error::ServerError;
 use crate::server::webrtc::{self};
 use crate::session::Session;
 use crate::{call_session, get_session_attribute};
-<<<<<<< HEAD
-use libwebrtc::sdp::SDPType;
-use log::info;
-=======
 use async_stream::stream;
 use futures::Stream;
 use libwebrtc::media_type::MediaType;
 use libwebrtc::sdp::SDPType;
-use libwebrtc::transceiver::{self, TransceiverDirection};
+use libwebrtc::transceiver::TransceiverDirection;
 use log::{error, info};
->>>>>>> origin/main
 use std::fmt::Debug;
 use std::pin::Pin;
 use std::result::Result;
@@ -153,22 +148,15 @@ impl WebRtc for SharedState {
         &self,
         request: Request<CreatePeerConnectionRequest>,
     ) -> Result<Response<CreatePeerConnectionResponse>, Status> {
-<<<<<<< HEAD
         let CreatePeerConnectionRequest {
+            name,
             session_id,
             peer_connection_id,
-            name,
         } = requester("create_peer_connection", request);
-        let peer_factory =
-            &get_session_attribute!(self, session_id.clone(), peer_connection_factory);
-=======
-        let CreatePeerConnectionRequest { name, session_id } =
-            requester("create_peer_connection", request);
-        let peer_connection_id = nanoid::nanoid!();
         let pool = &get_session_attribute!(self, session_id.clone(), webrtc_pool);
->>>>>>> origin/main
-        // create the peer connection
         let session = self.data.get_session(&session_id)?;
+
+        // create the peer connection
         let peer_connection =
             pool.create_peer_connection_manager(peer_connection_id.clone(), name)?;
 

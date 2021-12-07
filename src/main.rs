@@ -8,10 +8,7 @@ mod peer_connection;
 mod server;
 mod session;
 mod stats;
-<<<<<<< HEAD
-=======
 pub mod webrtc_pool;
->>>>>>> origin/main
 
 use crate::config::CONFIG;
 use crate::data::{Data, SharedState};

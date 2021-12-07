@@ -9,10 +9,6 @@ use dashmap::DashMap;
 use libwebrtc::empty_frame_producer::EmptyFrameProducer;
 use libwebrtc::video_track_source::VideoTrackSource;
 use log::{error, info};
-<<<<<<< HEAD
-=======
-use nanoid::nanoid;
->>>>>>> origin/main
 use std::time::SystemTime;
 
 pub(crate) type PeerConnections = DashMap<String, PeerConnectionManager>;
@@ -32,13 +28,8 @@ pub(crate) struct Session {
     pub(crate) state: State,
     pub(crate) start_time: Option<SystemTime>,
     pub(crate) stop_time: Option<SystemTime>,
-<<<<<<< HEAD
-    pub(crate) peer_connection_factory: PeerConnectionFactory,
-    frame_producer: GStreamerRawFrameProducer,
-=======
     pub(crate) webrtc_pool: WebRTCPool,
     frame_producer: EmptyFrameProducer,
->>>>>>> origin/main
 }
 
 impl fmt::Debug for Session {
@@ -70,10 +61,6 @@ impl Session {
             state: State::Created,
             start_time: None,
             stop_time: None,
-<<<<<<< HEAD
-            peer_connection_factory,
-=======
->>>>>>> origin/main
             frame_producer,
             webrtc_pool,
         })
@@ -290,14 +277,9 @@ mod tests {
     #[test]
     fn it_creates_a_peer_connection() {
         tracing_subscriber::fmt::init();
-<<<<<<< HEAD
-        let (_api, factory, _video_source) = peer_connection_params();
-        let session = Session::new(nanoid!(), "New Session".into()).unwrap();
-=======
         let (pool, _video_source) = peer_connection_params();
         let factory = pool.factory_list.get(&0).unwrap();
         let session = Session::new("New Session".into()).unwrap();
->>>>>>> origin/main
         let session_id = session.id.clone();
         let data = Data::new();
         data.add_session(session).unwrap();
@@ -317,11 +299,7 @@ mod tests {
             session.add_peer_connection(pc).unwrap();
 
             assert_eq!(session.peer_connections.get(&pc_id).unwrap().id, pc_id);
-<<<<<<< HEAD
-            std::thread::sleep(time::Duration::from_millis(1000));
-=======
             std::thread::sleep(std::time::Duration::from_millis(1000));
->>>>>>> origin/main
         }
     }
 }
