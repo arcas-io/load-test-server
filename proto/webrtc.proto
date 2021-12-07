@@ -16,6 +16,8 @@ service WebRtc {
   rpc SetRemoteDescription(SetSDPRequest) returns (SetSDPResponse);
   rpc AddTrack(AddTrackRequest) returns (Empty);
   rpc AddTransceiver(AddTransceiverRequest) returns (Empty);
+  rpc Observer(ObserverRequest) returns (stream PeerConnectionObserverMessage);
+  rpc GetTransceivers(GetTransceiversRequest) returns (GetTransceiversResponse);
 }
 
 // Reusable empty message
@@ -73,6 +75,15 @@ message GetStatsResponse {
   repeated PeerConnectionStats peer_connections = 2;
 }
 
+message GetTransceiversRequest {
+  string session_id = 1;
+  string peer_connection_id = 2;
+}
+
+message GetTransceiversResponse {
+  repeated Transceiver transceivers = 1;
+}
+
 // Create PeerConnection
 message CreatePeerConnectionRequest {
   string session_id = 1;
@@ -90,12 +101,12 @@ enum SDPType {
 }
 
 message CreateSDPRequest { string session_id = 1; string peer_connection_id = 2; }
-message CreateSDPResponse { string session_id = 1; string peer_connection_id = 2; string sdp = 3; SDPType sdp_type = 4; } 
+message CreateSDPResponse { string session_id = 1; string peer_connection_id = 2; string sdp = 3; SDPType sdp_type = 4; }
 message SetSDPRequest { string session_id = 1; string peer_connection_id = 2; string sdp = 3; SDPType sdp_type = 4; }
 message SetSDPResponse { string session_id = 1; string peer_connection_id = 2; bool success = 3; }
 
 message AddTrackRequest {
-  string session_id = 1; 
+  string session_id = 1;
   string peer_connection_id = 2;
   string track_id = 3;
   string track_label = 4;
@@ -103,8 +114,43 @@ message AddTrackRequest {
 // message AddTrackResponse []
 
 message AddTransceiverRequest {
-  string session_id = 1; 
+  string session_id = 1;
   string peer_connection_id = 2;
   string track_id = 3;
   string track_label = 4;
+}
+
+message ObserverRequest { string session_id = 1; string peer_connection_id = 2; }
+
+message IceCandidate {
+    string sdp = 1;
+    string mid = 2;
+    uint32 mline_index = 3;
+}
+
+enum MediaType {
+    AUDIO = 0;
+    VIDEO = 1;
+    DATA = 2;
+    UNSUPPORTED = 3;
+}
+
+enum TransceiverDirection {
+    SENDRECV = 0;
+    SENDONLY = 1;
+    RECVONLY = 2;
+    INACTIVE = 3;
+}
+
+message Transceiver {
+    string id = 1;
+    string mid = 2;
+    TransceiverDirection direction = 3;
+    MediaType media_type = 4;
+}
+
+message PeerConnectionObserverMessage {
+    oneof event {
+        IceCandidate ice_candidate = 1;
+    }
 }

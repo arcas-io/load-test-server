@@ -2,14 +2,17 @@ use crate::error::{Result, ServerError};
 use crate::helpers::elapsed;
 use crate::peer_connection::PeerConnectionManager;
 use crate::stats::{get_stats, Stats};
+use crate::webrtc_pool::WebRTCPool;
 use core::fmt;
 use dashmap::mapref::one::Ref;
 use dashmap::DashMap;
-use libwebrtc::factory::Factory;
-use libwebrtc::peer_connection::PeerConnectionFactory;
-use libwebrtc::raw_video_frame_producer::{GStreamerRawFrameProducer, RawFrameProducer};
+use libwebrtc::empty_frame_producer::EmptyFrameProducer;
 use libwebrtc::video_track_source::VideoTrackSource;
 use log::{error, info};
+<<<<<<< HEAD
+=======
+use nanoid::nanoid;
+>>>>>>> origin/main
 use std::time::SystemTime;
 
 pub(crate) type PeerConnections = DashMap<String, PeerConnectionManager>;
@@ -29,8 +32,13 @@ pub(crate) struct Session {
     pub(crate) state: State,
     pub(crate) start_time: Option<SystemTime>,
     pub(crate) stop_time: Option<SystemTime>,
+<<<<<<< HEAD
     pub(crate) peer_connection_factory: PeerConnectionFactory,
     frame_producer: GStreamerRawFrameProducer,
+=======
+    pub(crate) webrtc_pool: WebRTCPool,
+    frame_producer: EmptyFrameProducer,
+>>>>>>> origin/main
 }
 
 impl fmt::Debug for Session {
@@ -52,8 +60,7 @@ impl Session {
     pub(crate) fn new(id: String, name: String) -> Result<Self> {
         let peer_connections: PeerConnections = DashMap::new();
         let (video_source, frame_producer) = PeerConnectionManager::file_video_source()?;
-        let factory = Factory::new();
-        let peer_connection_factory = factory.create_peer_connection_factory()?;
+        let webrtc_pool = WebRTCPool::new(num_cpus::get())?;
 
         Ok(Self {
             id,
@@ -63,8 +70,12 @@ impl Session {
             state: State::Created,
             start_time: None,
             stop_time: None,
+<<<<<<< HEAD
             peer_connection_factory,
+=======
+>>>>>>> origin/main
             frame_producer,
+            webrtc_pool,
         })
     }
 
@@ -150,9 +161,10 @@ impl Session {
             id, self.id
         );
 
-        Ok(self.peer_connections.get(id).ok_or_else(|| {
+        let value = self.peer_connections.get(id).ok_or_else(|| {
             ServerError::InvalidPeerConnection(format!("Peer connection {} not found", id))
-        })?)
+        })?;
+        Ok(value)
     }
 
     pub(crate) fn elapsed_time(&self) -> Option<u64> {
@@ -278,8 +290,14 @@ mod tests {
     #[test]
     fn it_creates_a_peer_connection() {
         tracing_subscriber::fmt::init();
+<<<<<<< HEAD
         let (_api, factory, _video_source) = peer_connection_params();
         let session = Session::new(nanoid!(), "New Session".into()).unwrap();
+=======
+        let (pool, _video_source) = peer_connection_params();
+        let factory = pool.factory_list.get(&0).unwrap();
+        let session = Session::new("New Session".into()).unwrap();
+>>>>>>> origin/main
         let session_id = session.id.clone();
         let data = Data::new();
         data.add_session(session).unwrap();
@@ -289,11 +307,21 @@ mod tests {
 
         let pc_id = nanoid!();
         {
-            let pc = PeerConnectionManager::new(&factory, pc_id.clone(), "new".into()).unwrap();
+            let pc = PeerConnectionManager::new(
+                &factory.peer_connection_factory,
+                0,
+                pc_id.clone(),
+                "new".into(),
+            )
+            .unwrap();
             session.add_peer_connection(pc).unwrap();
 
             assert_eq!(session.peer_connections.get(&pc_id).unwrap().id, pc_id);
+<<<<<<< HEAD
             std::thread::sleep(time::Duration::from_millis(1000));
+=======
+            std::thread::sleep(std::time::Duration::from_millis(1000));
+>>>>>>> origin/main
         }
     }
 }

@@ -8,6 +8,10 @@ mod peer_connection;
 mod server;
 mod session;
 mod stats;
+<<<<<<< HEAD
+=======
+pub mod webrtc_pool;
+>>>>>>> origin/main
 
 use crate::config::CONFIG;
 use crate::data::{Data, SharedState};
@@ -18,6 +22,7 @@ use std::sync::Arc;
 #[tokio::main]
 async fn main() -> Result<()> {
     pretty_env_logger::init();
+    libwebrtc_sys::ffi::set_arcas_log_level(libwebrtc_sys::ffi::LoggingSeverity::LS_ERROR);
     let shared_state = SharedState {
         data: Arc::from(Data::new()),
     };

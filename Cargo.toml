@@ -16,19 +16,23 @@ libwebrtc-sys = { path = "../libwebrtc-sys"}
 libwebrtc = { path = "../libwebrtc"}
 nanoid = "0.4.0"
 pretty_env_logger = "0.4.0"
-prost = "0.8"
-prost-types = "0.8"
+prost = "0.9"
+prost-types = "0.9"
 serde = { version = "1.0.127", features = ["derive"] }
 # serde_json = "1.0"
 strum = { version = "0.21", features = ["derive"] }
 thiserror = "1.0"
 tokio = { version = "1.9.0", features = ["full"] }
-tonic = "0.5"
+tonic = "0.6"
 tracing = "0.1"
 tracing-subscriber = { version = "0.2.19", features = ["fmt", "env-filter"] }
 cxx = "1.0.56"
 bytes = "1.1.0"
 parking_lot = "0.11.2"
+rayon = "1.5.1"
+num_cpus = "1.13.0"
+async-stream = "0.3.2"
+futures = "0.3.17"
 
 [build-dependencies]
-tonic-build = "0.5"
+tonic-build = "0.6"

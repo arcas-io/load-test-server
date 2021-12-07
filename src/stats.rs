@@ -117,7 +117,7 @@ pub(crate) async fn get_stats(session: &Session) -> Result<Stats> {
         let peer_connection = session
             .peer_connections
             .remove(&peer_connection_id)
-            .ok_or_else(|| ServerError::GetStatsError(session_id, peer_id))?
+            .ok_or(ServerError::GetStatsError(session_id, peer_id))?
             .1;
 
         // get the peer connection's stats
