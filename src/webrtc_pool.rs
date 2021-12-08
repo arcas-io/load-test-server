@@ -2,7 +2,11 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use dashmap::DashMap;
 use libwebrtc::{
-    error::WebRTCError, factory::Factory, peer_connection::PeerConnectionFactory,
+    error::WebRTCError,
+    factory::{Factory, FactoryConfig},
+    passthrough_video_decoder_factory::PassthroughVideoDecoderFactory,
+    peer_connection::PeerConnectionFactory,
+    reactive_video_encoder::ReactiveVideoEncoderFactory,
     video_encoder_pool::VideoEncoderPool,
 };
 
@@ -41,8 +45,12 @@ impl WebRTCPool {
         let factory_list = DashMap::new();
         for id in 0u32..(factory_count as u32) {
             let factory = Factory::new();
-            let peer_connection_factory =
-                factory.create_peer_connection_factory_reactive(video_encoder_pool_tx.clone())?;
+            let reactive_video_encoder =
+                ReactiveVideoEncoderFactory::create(video_encoder_pool_tx.clone())?;
+            let peer_connection_factory = factory.create_factory_with_config(FactoryConfig {
+                video_encoder_factory: Some(Box::new(reactive_video_encoder)),
+                video_decoder_factory: Some(Box::new(PassthroughVideoDecoderFactory::new())),
+            })?;
             let item = WebRTCPoolItem {
                 id,
                 factory,
