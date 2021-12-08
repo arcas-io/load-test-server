@@ -7,7 +7,7 @@ use async_stream::stream;
 use futures::Stream;
 use libwebrtc::media_type::MediaType;
 use libwebrtc::sdp::SDPType;
-use libwebrtc::transceiver::{self, TransceiverDirection};
+use libwebrtc::transceiver::TransceiverDirection;
 use log::{error, info};
 use std::fmt::Debug;
 use std::pin::Pin;
@@ -95,9 +95,8 @@ impl WebRtc for SharedState {
         &self,
         request: Request<CreateSessionRequest>,
     ) -> Result<Response<CreateSessionResponse>, Status> {
-        let name = requester("create_session", request).name;
-        let session = Session::new(name)?;
-        let session_id = session.id.clone();
+        let CreateSessionRequest { session_id, name } = requester("create_session", request);
+        let session = Session::new(session_id.clone(), name)?;
         self.data.add_session(session)?;
         let reply = webrtc::CreateSessionResponse { session_id };
 
@@ -149,12 +148,15 @@ impl WebRtc for SharedState {
         &self,
         request: Request<CreatePeerConnectionRequest>,
     ) -> Result<Response<CreatePeerConnectionResponse>, Status> {
-        let CreatePeerConnectionRequest { name, session_id } =
-            requester("create_peer_connection", request);
-        let peer_connection_id = nanoid::nanoid!();
+        let CreatePeerConnectionRequest {
+            name,
+            session_id,
+            peer_connection_id,
+        } = requester("create_peer_connection", request);
         let pool = &get_session_attribute!(self, session_id.clone(), webrtc_pool);
-        // create the peer connection
         let session = self.data.get_session(&session_id)?;
+
+        // create the peer connection
         let peer_connection =
             pool.create_peer_connection_manager(peer_connection_id.clone(), name)?;
 

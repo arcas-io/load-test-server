@@ -2,9 +2,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::error::{Result, ServerError};
-
 use crate::session::Session;
-
 use dashmap::mapref::one::Ref;
 use dashmap::DashMap;
 use log::info;
@@ -78,10 +76,11 @@ impl SharedState {
 mod tests {
 
     use super::*;
+    use nanoid::nanoid;
 
     #[test]
     fn it_adds_a_session() {
-        let session = Session::new("New Session".into()).unwrap();
+        let session = Session::new(nanoid!(), "New Session".into()).unwrap();
         let session_id = session.id.clone();
         let data = Data::new();
         data.add_session(session).unwrap();

@@ -24,7 +24,7 @@ service WebRtc {
 message Empty {}
 
 // Create Session
-message CreateSessionRequest { string name = 1; }
+message CreateSessionRequest { string session_id = 1; string name = 2; }
 message CreateSessionResponse { string session_id = 1; }
 
 // Start Session
@@ -87,7 +87,8 @@ message GetTransceiversResponse {
 // Create PeerConnection
 message CreatePeerConnectionRequest {
   string session_id = 1;
-  string name = 2;
+  string peer_connection_id = 2;
+  string name = 3;
 }
 
 message CreatePeerConnectionResponse { string peer_connection_id = 1; }

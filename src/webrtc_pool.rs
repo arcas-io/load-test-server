@@ -28,8 +28,10 @@ impl std::fmt::Debug for WebRTCPoolItem {
 
 #[derive(Debug)]
 pub(crate) struct WebRTCPool {
+    #[allow(dead_code)]
     pub(crate) factory_count: usize,
     pub(crate) factory_list: DashMap<u32, WebRTCPoolItem>,
+    #[allow(dead_code)]
     pub(crate) video_encoder_pool: VideoEncoderPool,
 }
 
