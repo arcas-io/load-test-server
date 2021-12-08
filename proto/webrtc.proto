@@ -9,7 +9,7 @@ service WebRtc {
   rpc StopSession(StopSessionRequest) returns (Empty);
   rpc GetStats(GetStatsRequest) returns (GetStatsResponse);
   rpc CreatePeerConnection(CreatePeerConnectionRequest)
-      returns (CreatePeerConnectionResponse);
+      returns (Empty);
   rpc CreateOffer(CreateSDPRequest) returns (CreateSDPResponse);
   rpc CreateAnswer(CreateSDPRequest) returns (CreateSDPResponse);
   rpc SetLocalDescription(SetSDPRequest) returns (SetSDPResponse);
@@ -91,8 +91,6 @@ message CreatePeerConnectionRequest {
   string name = 3;
 }
 
-message CreatePeerConnectionResponse { string peer_connection_id = 1; }
-
 enum SDPType {
   OFFER = 0;
   PRANSWER = 1;
@@ -128,6 +126,11 @@ message IceCandidate {
     uint32 mline_index = 3;
 }
 
+message VideoTransceiver {
+    string mid = 1;
+    string direction = 2;
+};
+
 enum MediaType {
     AUDIO = 0;
     VIDEO = 1;
@@ -152,5 +155,6 @@ message Transceiver {
 message PeerConnectionObserverMessage {
     oneof event {
         IceCandidate ice_candidate = 1;
+        VideoTransceiver video_transceiver = 2;
     }
 }

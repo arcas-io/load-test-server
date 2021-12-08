@@ -196,7 +196,7 @@ macro_rules! call_session {
             .data
             .sessions
             .get_mut(&$session_id.clone())
-            .ok_or_else(|| crate::error::ServerError::InvalidSessionError($session_id.clone()))?
+            .ok_or_else(|| crate::error::ServerError::InvalidSessionError($session_id.to_string()))?
             .$fn($($args),*)
     };
 }
@@ -208,7 +208,7 @@ macro_rules! get_session_attribute {
             .data
             .sessions
             .get(&$session_id)
-            .ok_or_else(|| crate::error::ServerError::InvalidSessionError($session_id))?
+            .ok_or_else(|| crate::error::ServerError::InvalidSessionError($session_id.to_string()))?
             .$attr
     };
 }

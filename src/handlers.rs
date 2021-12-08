@@ -8,7 +8,7 @@ use futures::Stream;
 use libwebrtc::media_type::MediaType;
 use libwebrtc::sdp::SDPType;
 use libwebrtc::transceiver::TransceiverDirection;
-use log::{error, info};
+use log::{debug, error, info};
 use std::fmt::Debug;
 use std::pin::Pin;
 use std::result::Result;
@@ -17,10 +17,10 @@ use tokio::select;
 use tonic::{Request, Response, Status};
 use webrtc::web_rtc_server::WebRtc;
 use webrtc::{
-    AddTrackRequest, AddTransceiverRequest, CreatePeerConnectionRequest,
-    CreatePeerConnectionResponse, CreateSdpRequest, CreateSdpResponse, CreateSessionRequest,
-    CreateSessionResponse, Empty, GetStatsRequest, GetStatsResponse, PeerConnectionObserverMessage,
-    SetSdpRequest, SetSdpResponse, StartSessionRequest, StopSessionRequest,
+    AddTrackRequest, AddTransceiverRequest, CreatePeerConnectionRequest, CreateSdpRequest,
+    CreateSdpResponse, CreateSessionRequest, CreateSessionResponse, Empty, GetStatsRequest,
+    GetStatsResponse, PeerConnectionObserverMessage, SetSdpRequest, SetSdpResponse,
+    StartSessionRequest, StopSessionRequest,
 };
 
 type ObserverStream =
@@ -147,7 +147,7 @@ impl WebRtc for SharedState {
     async fn create_peer_connection(
         &self,
         request: Request<CreatePeerConnectionRequest>,
-    ) -> Result<Response<CreatePeerConnectionResponse>, Status> {
+    ) -> Result<Response<Empty>, Status> {
         let CreatePeerConnectionRequest {
             name,
             session_id,
@@ -155,14 +155,11 @@ impl WebRtc for SharedState {
         } = requester("create_peer_connection", request);
         let pool = &get_session_attribute!(self, session_id.clone(), webrtc_pool);
         let session = self.data.get_session(&session_id)?;
-
-        // create the peer connection
-        let peer_connection =
-            pool.create_peer_connection_manager(peer_connection_id.clone(), name)?;
+        let peer_connection = pool.create_peer_connection_manager(peer_connection_id, name)?;
 
         // add the peer connection to the session
         session.add_peer_connection(peer_connection)?;
-        let reply = webrtc::CreatePeerConnectionResponse { peer_connection_id };
+        let reply = webrtc::Empty {};
         responder("create_peer_connection", reply)
     }
 
@@ -260,12 +257,15 @@ impl WebRtc for SharedState {
         request: tonic::Request<AddTrackRequest>,
     ) -> Result<tonic::Response<Empty>, tonic::Status> {
         let request = requester("add_track", request);
+        println!("got this far: {:?}", &request);
         let session_id = request.session_id;
         let peer_connection_id = request.peer_connection_id;
         let _track_id = request.track_id;
         let track_label = request.track_label;
+        println!("data: {:?} {:?}", &session_id, self.data);
         let session = self.data.get_session(&session_id)?;
         let pc = session.value().get_peer_connection(&peer_connection_id)?;
+        println!("got past here?");
         let video_source = &session.value().video_source;
         let pool = &session.value().webrtc_pool;
 
@@ -317,10 +317,31 @@ impl WebRtc for SharedState {
             .get_mut(&peer_connection_id)
             .ok_or_else(|| tonic::Status::new(tonic::Code::NotFound, "PeerConnection not found"))?;
 
+        let mut track_rx = pc.value_mut().video_track_rx()?;
         let mut ice_rx = pc.value_mut().ice_candidates_rx()?;
         let stream_out = stream! {
             loop {
                 select! {
+                    transceiver = track_rx.recv() => {
+                        match transceiver {
+                            Some(transceiver) => {
+                                let message = webrtc::PeerConnectionObserverMessage {
+                                    event: Some(
+                                        webrtc::peer_connection_observer_message::Event::VideoTransceiver (
+                                            webrtc::VideoTransceiver {
+                                                direction: transceiver.direction().to_string(),
+                                                mid: transceiver.mid(),
+                                            },
+                                        ),
+                                    ),
+                                };
+                                yield Ok(message);
+                            },
+                            None => {
+                                debug!("No transceiver");
+                            }
+                        }
+                    }
                     candidate = ice_rx.recv() => {
                         match candidate.ok_or_else(|| ServerError::InternalError("observer ice candidate erorr".into())) {
                             Ok(candidate) => {

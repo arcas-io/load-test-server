@@ -187,6 +187,10 @@ impl PeerConnectionManager {
         Ok(self.webrtc_peer_connection.take_ice_candidate_rx()?)
     }
 
+    pub fn video_track_rx(&mut self) -> Result<Receiver<VideoTransceiver>> {
+        Ok(self.webrtc_peer_connection.take_video_track_rx()?)
+    }
+
     pub(crate) async fn get_transceivers(&self) -> (Vec<VideoTransceiver>, Vec<AudioTransceiver>) {
         self.webrtc_peer_connection.get_transceivers()
     }
