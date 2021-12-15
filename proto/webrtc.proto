@@ -8,6 +8,7 @@ service WebRtc {
   rpc StartSession(StartSessionRequest) returns (Empty);
   rpc StopSession(StopSessionRequest) returns (Empty);
   rpc GetStats(GetStatsRequest) returns (GetStatsResponse);
+  // rpc GetPeerConnectionStats(GetPeerConnectionStatsRequest) returns (GetPeerConnectionStatsResponse);
   rpc CreatePeerConnection(CreatePeerConnectionRequest)
       returns (Empty);
   rpc CreateOffer(CreateSDPRequest) returns (CreateSDPResponse);
@@ -35,51 +36,58 @@ message StopSessionRequest { string session_id = 1; }
 
 // Get Stats
 message GetStatsRequest { string session_id = 1; }
+message PeerConnectionState {
+  int32 num_sending = 1;
+  int32 num_not_sending = 2;
+  int32 num_receiving = 3;
+  int32 num_not_receiving = 4;
+}
 message SessionStats {
   string id = 1;
   string name = 2;
   uint64 num_peer_connections = 3;
   string state = 4;
-  google.protobuf.Timestamp start_time = 5;
-  google.protobuf.Timestamp stop_time = 6;
-  uint64 elapsed_time = 7;
-}
-message PeerConnectionStat {
-  uint32 ssrc = 1;
-  uint32 packets_sent = 2;
-  uint64 bytes_sent = 3;
-  uint32 frames_encoded = 4;
-  uint32 key_frames_encoded = 5;
-  double total_encode_time = 6;
-  uint32 frame_width = 7;
-  uint32 frame_height = 8;
-  uint64 retransmitted_packets_sent = 9;
-  uint64 retransmitted_bytes_sent = 10;
-  double total_packet_send_delay = 11;
-  uint32 nack_count = 12;
-  uint32 fir_count = 13;
-  uint32 pli_count = 14;
-  uint32 quality_limitation_reason = 15;
-  uint32 quality_limitation_resolution_changes = 16;
-  int32 remote_packets_lost = 17;
-  double remote_jitter = 18;
-  double remote_round_trip_time = 19;
-}
-message PeerConnectionStats {
-  string id = 1;
-  string name = 2;
-  repeated PeerConnectionStat video_sender = 3;
+  PeerConnectionState peer_connection_state = 5;
+  google.protobuf.Timestamp start_time = 6;
+  google.protobuf.Timestamp stop_time = 7;
+  uint64 elapsed_time = 8;
 }
 message GetStatsResponse {
   SessionStats session = 1;
-  repeated PeerConnectionStats peer_connections = 2;
 }
 
+// // Get Peer Connection Stats
+// message GetPeerConnectionStatsRequest { string session_id = 1; string peer_connection_id = 2; }
+// message PeerConnectionVideoSenderStats {
+//   uint32 ssrc = 1;
+//   uint32 packets_sent = 2;
+//   uint64 bytes_sent = 3;
+//   uint32 frames_encoded = 4;
+//   uint32 key_frames_encoded = 5;
+//   double total_encode_time = 6;
+//   uint32 frame_width = 7;
+//   uint32 frame_height = 8;
+//   uint64 retransmitted_packets_sent = 9;
+//   uint64 retransmitted_bytes_sent = 10;
+//   double total_packet_send_delay = 11;
+//   uint32 nack_count = 12;
+//   uint32 fir_count = 13;
+//   uint32 pli_count = 14;
+//   uint32 quality_limitation_reason = 15;
+//   uint32 quality_limitation_resolution_changes = 16;
+//   int32 remote_packets_lost = 17;
+//   double remote_jitter = 18;
+//   double remote_round_trip_time = 19;
+// }
+// message GetPeerConnectionStatsResponse {
+//   PeerConnectionVideoSenderStats video_sender = 1;
+// }
+
+// Get Tranceiver
 message GetTransceiversRequest {
   string session_id = 1;
   string peer_connection_id = 2;
 }
-
 message GetTransceiversResponse {
   repeated Transceiver transceivers = 1;
 }

@@ -47,10 +47,9 @@ impl Data {
 
     pub(crate) fn get_session(&self, id: &str) -> Result<Ref<String, Session>> {
         let map = &self.sessions;
-
         let dashmap_value = map
             .get(id)
-            .ok_or_else(|| ServerError::InvalidSessionError(id.to_string()))?;
+            .ok_or_else(|| ServerError::InvalidSessionError(id.into()))?;
 
         Ok(dashmap_value)
     }
@@ -59,12 +58,14 @@ impl Data {
 impl SharedState {
     pub(crate) fn start_metrics_collection(&self) {
         let data = self.data.clone();
+
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(1));
             interval.tick().await;
+
             loop {
                 for session in &data.sessions {
-                    session.value().peer_connection_stats().await;
+                    session.value().export_peer_connection_stats().await;
                 }
                 interval.tick().await;
             }
@@ -79,12 +80,12 @@ mod tests {
     use nanoid::nanoid;
 
     #[test]
-    fn it_adds_a_session() {
+    fn it_adds_and_gets_a_session() {
         let session = Session::new(nanoid!(), "New Session".into()).unwrap();
         let session_id = session.id.clone();
         let data = Data::new();
         data.add_session(session).unwrap();
-        let added_session = data.sessions.get(&session_id).unwrap();
+        let added_session = data.get_session(&session_id).unwrap();
 
         assert_eq!(session_id, added_session.id);
     }

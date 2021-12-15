@@ -1,6 +1,7 @@
 use crate::error::{Result, ServerError};
 use crate::helpers::elapsed;
-use crate::peer_connection::PeerConnectionManager;
+use crate::peer_connection::{PeerConnectionManager, VideoReceiveState, VideoSendState};
+// use crate::stats::{get_peer_connection_stats, get_stats, PeerConnectionStats, Stats};
 use crate::stats::{get_stats, Stats};
 use crate::webrtc_pool::WebRTCPool;
 use core::fmt;
@@ -13,11 +14,32 @@ use std::time::SystemTime;
 
 pub(crate) type PeerConnections = DashMap<String, PeerConnectionManager>;
 
+impl From<PeerConnectionState> for crate::server::webrtc::PeerConnectionState {
+    fn from(
+        peer_connection_state: PeerConnectionState,
+    ) -> crate::server::webrtc::PeerConnectionState {
+        crate::server::webrtc::PeerConnectionState {
+            num_sending: peer_connection_state.num_sending,
+            num_not_sending: peer_connection_state.num_not_sending,
+            num_receiving: peer_connection_state.num_receiving,
+            num_not_receiving: peer_connection_state.num_not_receiving,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, strum::ToString)]
-pub(crate) enum State {
+pub(crate) enum SessionState {
     Created,
     Started,
     Stopped,
+}
+
+#[derive(Debug, Default)]
+pub(crate) struct PeerConnectionState {
+    num_sending: i32,
+    num_not_sending: i32,
+    num_receiving: i32,
+    num_not_receiving: i32,
 }
 
 pub(crate) struct Session {
@@ -25,7 +47,7 @@ pub(crate) struct Session {
     pub(crate) name: String,
     pub(crate) peer_connections: PeerConnections,
     pub(crate) video_source: VideoTrackSource,
-    pub(crate) state: State,
+    pub(crate) state: SessionState,
     pub(crate) start_time: Option<SystemTime>,
     pub(crate) stop_time: Option<SystemTime>,
     pub(crate) webrtc_pool: WebRTCPool,
@@ -58,7 +80,7 @@ impl Session {
             name,
             peer_connections,
             video_source,
-            state: State::Created,
+            state: SessionState::Created,
             start_time: None,
             stop_time: None,
             frame_producer,
@@ -69,13 +91,13 @@ impl Session {
     pub(crate) fn start(&mut self) -> Result<()> {
         info!("Attempting to start session {}", self.id);
 
-        if self.state != State::Created {
+        if self.state != SessionState::Created {
             return Err(ServerError::InvalidStateError(
                 "Only a created session can be started".into(),
             ));
         }
 
-        self.state = State::Started;
+        self.state = SessionState::Started;
         self.start_time = Some(SystemTime::now());
 
         info!("Started session: {:?}", self);
@@ -86,29 +108,48 @@ impl Session {
     pub(crate) fn stop(&mut self) -> Result<()> {
         info!("Attempting to stop session {}", self.id);
 
-        if self.state != State::Started {
+        if self.state != SessionState::Started {
             return Err(ServerError::InvalidStateError(
                 "Only a started session can be stopped".into(),
             ));
         }
 
-        self.state = State::Stopped;
+        self.state = SessionState::Stopped;
         self.stop_time = Some(SystemTime::now());
 
         info!("stopped session: {:?}", self);
 
+        drop(self);
+
         Ok(())
     }
 
-    pub(crate) async fn peer_connection_stats(&self) {
-        for pc in self.peer_connections.iter() {
-            match pc.value().export_stats(&self.id.to_owned()).await {
-                Ok(_) => {}
-                Err(err) => {
-                    error!("Failed to export stats for peer connection: {}", err);
-                }
-            }
+    pub(crate) async fn export_peer_connection_stats(&self) {
+        for mut pc in self.peer_connections.iter_mut() {
+            pc.value_mut()
+                .export_stats(self.id.to_string())
+                .await
+                .map_err(|e| error!("Failed to export stats for peer connection: {}", e))
+                .ok();
         }
+    }
+
+    // Tally the states of all of the peer connections
+    pub(crate) fn peer_connection_states(&self) -> PeerConnectionState {
+        let mut peer_connection_state = PeerConnectionState::default();
+
+        self.peer_connections.iter().for_each(|pc| {
+            match pc.value().state.video_send {
+                VideoSendState::Sending(_) => peer_connection_state.num_sending += 1,
+                VideoSendState::NotSending(_) => peer_connection_state.num_not_sending += 1,
+            };
+            match pc.value().state.video_receive {
+                VideoReceiveState::Receiving(_) => peer_connection_state.num_receiving += 1,
+                VideoReceiveState::NotReceiving(_) => peer_connection_state.num_not_receiving += 1,
+            };
+        });
+
+        peer_connection_state
     }
 
     pub(crate) async fn get_stats(&self) -> Result<Stats> {
@@ -154,11 +195,29 @@ impl Session {
         Ok(value)
     }
 
+    // pub(crate) async fn get_peer_connection_stats(&self, id: &str) -> Result<PeerConnectionStats> {
+    //     info!(
+    //         "Attempting to get peer connection stats for session {} pc {}",
+    //         self.id, id
+    //     );
+
+    //     let peer_connection = self.get_peer_connection(id)?;
+    //     let video_sender_stats = peer_connection.get_stats().await?;
+    //     let stats = video_sender_stats.into();
+
+    //     info!(
+    //         "Stats for session {} pc {}: {:?}",
+    //         self.id, id, video_sender_stats
+    //     );
+
+    //     Ok(stats)
+    // }
+
     pub(crate) fn elapsed_time(&self) -> Option<u64> {
         match self.state {
-            State::Created => None,
-            State::Started => elapsed(self.start_time, Some(SystemTime::now())),
-            State::Stopped => elapsed(self.start_time, self.stop_time),
+            SessionState::Created => None,
+            SessionState::Started => elapsed(self.start_time, Some(SystemTime::now())),
+            SessionState::Stopped => elapsed(self.start_time, self.stop_time),
         }
     }
 }
@@ -217,53 +276,59 @@ macro_rules! get_session_attribute {
 mod tests {
     use super::*;
     use crate::data::Data;
-    use crate::peer_connection::tests::peer_connection_params;
+    use crate::peer_connection::tests::new_peer_connection;
     use nanoid::nanoid;
 
-    #[test]
-    fn it_adds_a_session() {
+    pub(crate) fn new_session() -> (String, Data) {
         let session = Session::new(nanoid!(), "New Session".into()).unwrap();
         let session_id = session.id.clone();
         let data = Data::new();
         data.add_session(session).unwrap();
+        (session_id, data)
+    }
 
+    #[test]
+    fn it_adds_a_session() {
+        let (session_id, data) = new_session();
         assert_eq!(session_id, data.sessions.get(&session_id).unwrap().id);
     }
 
     #[test]
     fn it_starts_a_session() {
-        let session = Session::new(nanoid!(), "New Session".into()).unwrap();
-        let session_id = session.id.clone();
-        let data = Data::new();
-        data.add_session(session).unwrap();
-
+        let (session_id, data) = new_session();
         let session = &mut *data.sessions.get_mut(&session_id).unwrap();
         session.start().unwrap();
 
-        assert_eq!(State::Started, session.state);
+        assert_eq!(SessionState::Started, session.state);
     }
 
     #[test]
     fn it_stops_a_session() {
-        let session = Session::new(nanoid!(), "New Session".into()).unwrap();
-        let session_id = session.id.clone();
-        let data = Data::new();
-        data.add_session(session).unwrap();
-
+        let (session_id, data) = new_session();
         let session = &mut *data.sessions.get_mut(&session_id).unwrap();
         session.start().unwrap();
         session.stop().unwrap();
 
-        assert_eq!(State::Stopped, session.state);
+        assert_eq!(SessionState::Stopped, session.state);
+    }
+
+    #[tokio::test]
+    async fn it_exports_peer_connection_stats() {
+        // tracing_subscriber::fmt::init();
+        let (session_id, data) = new_session();
+        let session = &mut *data.sessions.get_mut(&session_id).unwrap();
+        session.start().unwrap();
+
+        let pc = new_peer_connection().0;
+        session.add_peer_connection(pc).unwrap();
+        session.export_peer_connection_stats().await;
+
+        // TODO: come up with an assertion, just testing we don't get an err
     }
 
     #[tokio::test]
     async fn it_gets_stats() {
-        let session = Session::new(nanoid!(), "New Session".into()).unwrap();
-        let session_id = session.id.clone();
-        let data = Data::new();
-        data.add_session(session).unwrap();
-
+        let (session_id, data) = new_session();
         let session = &mut *data.sessions.get_mut(&session_id).unwrap();
         session.start().unwrap();
         let stats = session.get_stats().await;
@@ -275,29 +340,14 @@ mod tests {
     #[test]
     fn it_creates_a_peer_connection() {
         tracing_subscriber::fmt::init();
-        let (pool, _video_source) = peer_connection_params();
-        let factory = pool.factory_list.get(&0).unwrap();
-        let session = Session::new(nanoid!(), "New Session".into()).unwrap();
-        let session_id = session.id.clone();
-        let data = Data::new();
-        data.add_session(session).unwrap();
-
+        let (session_id, data) = new_session();
         let session = &mut *data.sessions.get_mut(&session_id).unwrap();
         session.start().unwrap();
 
-        let pc_id = nanoid!();
-        {
-            let pc = PeerConnectionManager::new(
-                &factory.peer_connection_factory,
-                0,
-                pc_id.clone(),
-                "new".into(),
-            )
-            .unwrap();
-            session.add_peer_connection(pc).unwrap();
+        let pc = new_peer_connection().0;
+        let pc_id = pc.id.clone();
+        session.add_peer_connection(pc).unwrap();
 
-            assert_eq!(session.peer_connections.get(&pc_id).unwrap().id, pc_id);
-            std::thread::sleep(std::time::Duration::from_millis(1000));
-        }
+        assert_eq!(session.peer_connections.get(&pc_id).unwrap().id, pc_id);
     }
 }

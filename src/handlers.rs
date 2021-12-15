@@ -38,6 +38,7 @@ fn responder<T: Debug>(tag: &str, response: T) -> Result<Response<T>, Status> {
     Ok(Response::new(response))
 }
 
+// TODO: move ice/sdp code below to a separate ice.rs file
 impl From<libwebrtc::ice_candidate::ICECandidate> for webrtc::PeerConnectionObserverMessage {
     fn from(candidate: libwebrtc::ice_candidate::ICECandidate) -> Self {
         Self {
@@ -131,18 +132,34 @@ impl WebRtc for SharedState {
     ) -> Result<Response<GetStatsResponse>, Status> {
         let session_id = requester("get_stats", request).session_id;
         let stats = call_session!(self, session_id, get_stats).await?;
-        let peer_connections = stats
-            .peer_connections
-            .into_iter()
-            .map(|peer_connection_stats| peer_connection_stats.into())
-            .collect();
         let reply = webrtc::GetStatsResponse {
             session: Some(stats.session.into()),
-            peer_connections,
         };
 
         responder("get_stats", reply)
     }
+
+    // async fn get_peer_connection_stats(
+    //     &self,
+    //     request: Request<GetPeerConnectionStatsRequest>,
+    // ) -> Result<Response<GetPeerConnectionStatsResponse>, Status> {
+    //     let GetPeerConnectionStatsRequest {
+    //         session_id,
+    //         peer_connection_id,
+    //     } = requester("get_peer_connection_stats", request);
+    //     let stats = call_session!(
+    //         self,
+    //         session_id,
+    //         get_peer_connection_stats,
+    //         &peer_connection_id
+    //     )
+    //     .await?;
+    //     let reply = webrtc::GetPeerConnectionStatsResponse {
+    //         video_sender: Some(stats.into()),
+    //     };
+
+    //     responder("get_peer_connection_stats", reply)
+    // }
 
     async fn create_peer_connection(
         &self,

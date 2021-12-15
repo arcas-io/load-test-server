@@ -20,10 +20,12 @@ use std::sync::Arc;
 async fn main() -> Result<()> {
     pretty_env_logger::init();
     libwebrtc_sys::ffi::set_arcas_log_level(libwebrtc_sys::ffi::LoggingSeverity::LS_ERROR);
+
     let shared_state = SharedState {
         data: Arc::from(Data::new()),
     };
 
+    // start exporting stats
     shared_state.start_metrics_collection();
 
     // run the gRPC server
