@@ -203,13 +203,13 @@ impl PeerConnectionManager {
 
         for stat in &stats.video_receiver_stats {
             log::trace!("{:?}", stat);
-            self.set_receive_state(&stat);
+            self.set_receive_state(stat);
             write_video_rx_stats(stat, &pc_id, &session_id);
         }
 
         for stat in &stats.video_sender_stats {
             log::trace!("{:?}", stat);
-            self.set_send_state(&stat);
+            self.set_send_state(stat);
             write_video_tx_stats(stat, &pc_id, &session_id);
         }
         Ok(())

@@ -1,8 +1,8 @@
-use crate::error::{Result, ServerError};
+use crate::error::Result;
 use crate::helpers::systemtime_to_timestamp;
-use crate::peer_connection::PeerConnectionManager;
+
 use crate::session::{PeerConnectionState, Session, SessionState};
-use libwebrtc_sys::ffi::ArcasVideoSenderStats;
+
 use std::time::SystemTime;
 
 #[derive(Debug)]
@@ -130,6 +130,7 @@ pub(crate) mod tests {
 
     use super::*;
     use crate::data::Data;
+    use libwebrtc_sys::ffi::ArcasVideoSenderStats;
     use nanoid::nanoid;
     use std::{thread, time::Duration};
 
