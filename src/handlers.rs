@@ -12,6 +12,7 @@ use log::{debug, error, info};
 use std::fmt::Debug;
 use std::pin::Pin;
 use std::result::Result;
+use std::time::Duration;
 
 use tokio::select;
 use tonic::{Request, Response, Status};
@@ -96,8 +97,14 @@ impl WebRtc for SharedState {
         &self,
         request: Request<CreateSessionRequest>,
     ) -> Result<Response<CreateSessionResponse>, Status> {
-        let CreateSessionRequest { session_id, name } = requester("create_session", request);
-        let session = Session::new(session_id.clone(), name)?;
+        let CreateSessionRequest {
+            session_id,
+            name,
+            polling_state_s,
+            log_level,
+        } = requester("create_session", request);
+        let polling_state_s = Duration::from_secs(polling_state_s);
+        let session = Session::new(session_id.clone(), name, polling_state_s, log_level.into())?;
         self.data.add_session(session)?;
         let reply = webrtc::CreateSessionResponse { session_id };
 

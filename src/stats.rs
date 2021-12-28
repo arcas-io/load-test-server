@@ -130,8 +130,8 @@ pub(crate) mod tests {
 
     use super::*;
     use crate::data::Data;
+    use crate::session::tests::new_session;
     use libwebrtc_sys::ffi::ArcasVideoSenderStats;
-    use nanoid::nanoid;
     use std::{thread, time::Duration};
 
     pub(crate) fn video_receiver_stats() -> ArcasVideoSenderStats {
@@ -160,11 +160,7 @@ pub(crate) mod tests {
 
     #[tokio::test]
     async fn it_gets_stats() {
-        let session = Session::new(nanoid!(), "New Session".into()).unwrap();
-        let session_id = session.id.clone();
-        let data = Data::new();
-        data.add_session(session).unwrap();
-
+        let (session_id, data) = new_session();
         let session = &mut *data.sessions.get_mut(&session_id).unwrap();
         session.start().unwrap();
 

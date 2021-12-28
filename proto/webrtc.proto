@@ -25,7 +25,19 @@ service WebRtc {
 message Empty {}
 
 // Create Session
-message CreateSessionRequest { string session_id = 1; string name = 2; }
+enum LogLevel {
+  NONE = 0;
+  INFO = 1;
+  WARN = 2;
+  ERROR = 3;
+  VERBOSE = 4;
+}
+message CreateSessionRequest {
+  string session_id = 1;
+  string name = 2;
+  uint64 polling_state_s = 3;
+  LogLevel log_level = 4;
+}
 message CreateSessionResponse { string session_id = 1; }
 
 // Start Session

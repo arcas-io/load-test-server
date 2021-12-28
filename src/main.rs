@@ -3,9 +3,10 @@ mod data;
 mod error;
 mod handlers;
 mod helpers;
+mod log;
 mod metrics;
 mod peer_connection;
-mod server;
+pub(crate) mod server;
 mod session;
 mod stats;
 pub mod webrtc_pool;
@@ -13,13 +14,14 @@ pub mod webrtc_pool;
 use crate::config::CONFIG;
 use crate::data::{Data, SharedState};
 use crate::error::Result;
+use crate::log::LogLevel;
 use crate::server::serve;
 use std::sync::Arc;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     pretty_env_logger::init();
-    libwebrtc_sys::ffi::set_arcas_log_level(libwebrtc_sys::ffi::LoggingSeverity::LS_ERROR);
+    LogLevel::set_log_level(&LogLevel::default());
 
     let shared_state = SharedState {
         data: Arc::from(Data::new()),

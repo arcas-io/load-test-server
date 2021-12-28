@@ -6,7 +6,6 @@ use core::fmt;
 use libwebrtc::empty_frame_producer::EmptyFrameProducer;
 use libwebrtc::encoded_video_frame_producer::DEFAULT_FPS;
 use libwebrtc::error::WebRTCError;
-
 use libwebrtc::ice_candidate::ICECandidate;
 use libwebrtc::peer_connection::{
     PeerConnection, PeerConnectionConfig, PeerConnectionFactory, VideoReceiverStats,
@@ -15,13 +14,10 @@ use libwebrtc::peer_connection::{
 use libwebrtc::peer_connection_observer::ConnectionState;
 use libwebrtc::sdp::{SDPType, SessionDescription};
 use libwebrtc::transceiver::{AudioTransceiver, TransceiverInit, VideoTransceiver};
-
 use libwebrtc::video_track::VideoTrack;
 use libwebrtc::video_track_source::VideoTrackSource;
 use libwebrtc_sys::ffi::ArcasVideoSenderStats;
-
 use tokio::sync::mpsc::Receiver;
-
 use tracing::warn;
 
 // Store the last bytes_sent in the enum
@@ -197,19 +193,27 @@ impl PeerConnectionManager {
     }
 
     // Export stats
-    pub(crate) async fn export_stats(&mut self, session_id: String) -> Result<()> {
+    pub(crate) async fn export_stats(
+        &mut self,
+        session_id: &String,
+        should_poll_state: bool,
+    ) -> Result<()> {
         let pc_id = self.id.clone();
         let stats = self.webrtc_peer_connection.get_stats().await?;
 
         for stat in &stats.video_receiver_stats {
             log::trace!("{:?}", stat);
-            self.set_receive_state(stat);
+            if should_poll_state {
+                self.set_receive_state(stat);
+            }
             write_video_rx_stats(stat, &pc_id, &session_id);
         }
 
         for stat in &stats.video_sender_stats {
             log::trace!("{:?}", stat);
-            self.set_send_state(stat);
+            if should_poll_state {
+                self.set_send_state(stat);
+            }
             write_video_tx_stats(stat, &pc_id, &session_id);
         }
         Ok(())
@@ -317,6 +321,7 @@ pub(crate) mod tests {
     #[tokio::test]
     async fn it_gets_and_exports_stats_for_a_peer_connection() {
         let session_id = nanoid!();
+        let polling_state_s = Duration::from_secs(1);
         let (mut pc, pool, _) = new_peer_connection();
         let (video_source, _video_writer) = PeerConnectionManager::file_video_source().unwrap();
         pc.add_track(&pool, &video_source, "Testlabel".into())
@@ -361,8 +366,8 @@ pub(crate) mod tests {
         let stats = pc.get_stats().await.unwrap();
         println!("{:?}", stats);
 
-        pc.export_stats(session_id.clone()).await.unwrap();
-        pc_recv.export_stats(session_id.clone()).await.unwrap();
+        pc.export_stats(&session_id, true).await.unwrap();
+        pc_recv.export_stats(&session_id, true).await.unwrap();
         sleep(Duration::from_millis(200)).await;
     }
 
