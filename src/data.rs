@@ -68,12 +68,6 @@ impl SharedState {
             loop {
                 for session in &data.sessions {
                     let should_poll_state = elapsed % session.polling_state_s.as_secs() == 0;
-                    log::warn!(
-                        "should_poll_state: {}, elapsed: {}, polling_state_s: {}",
-                        should_poll_state,
-                        elapsed,
-                        session.polling_state_s.as_secs()
-                    );
 
                     session
                         .value()
