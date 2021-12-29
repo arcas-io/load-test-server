@@ -61,18 +61,21 @@ impl SharedState {
 
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(1));
-            let mut count = 1;
+            let mut elapsed = 1;
+
             interval.tick().await;
 
             loop {
                 for session in &data.sessions {
-                    let should_poll_state = count % session.polling_state_s.as_secs() == 0;
+                    let should_poll_state = elapsed % session.polling_state_s.as_secs() == 0;
+
                     session
                         .value()
                         .export_peer_connection_stats(should_poll_state)
                         .await;
                 }
-                count += 1;
+
+                elapsed += 1;
                 interval.tick().await;
             }
         });
