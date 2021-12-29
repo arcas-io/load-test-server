@@ -129,6 +129,7 @@ impl Session {
 
         self.state = SessionState::Stopped;
         self.stop_time = Some(SystemTime::now());
+        LogLevel::set_log_level(&LogLevel::default());
 
         info!("stopped session: {:?}", self);
 
