@@ -1,5 +1,6 @@
 use crate::error::{Result, ServerError};
 use crate::helpers::elapsed;
+use crate::log::LogLevel;
 use crate::peer_connection::{PeerConnectionManager, VideoReceiveState, VideoSendState};
 // use crate::stats::{get_peer_connection_stats, get_stats, PeerConnectionStats, Stats};
 use crate::stats::{get_stats, Stats};
@@ -10,7 +11,7 @@ use dashmap::DashMap;
 use libwebrtc::empty_frame_producer::EmptyFrameProducer;
 use libwebrtc::video_track_source::VideoTrackSource;
 use log::{error, info};
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 
 pub(crate) type PeerConnections = DashMap<String, PeerConnectionManager>;
 
@@ -47,6 +48,8 @@ pub(crate) struct Session {
     pub(crate) name: String,
     pub(crate) peer_connections: PeerConnections,
     pub(crate) video_source: VideoTrackSource,
+    pub(crate) polling_state_s: Duration,
+    pub(crate) log_level: LogLevel,
     pub(crate) state: SessionState,
     pub(crate) start_time: Option<SystemTime>,
     pub(crate) stop_time: Option<SystemTime>,
@@ -58,11 +61,13 @@ impl fmt::Debug for Session {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "id={}, name={}, num_peer_connections={}, state={:?}, start_time={:?}, stop_time={:?}",
+            "id={}, name={}, num_peer_connections={}, state={:?}, polling_state_s={:?}, log_level={:?}, start_time={:?}, stop_time={:?}",
             self.id,
             self.name,
             self.peer_connections.len(),
             self.state,
+            self.polling_state_s,
+            self.log_level,
             self.start_time,
             self.stop_time
         )
@@ -70,7 +75,13 @@ impl fmt::Debug for Session {
 }
 
 impl Session {
-    pub(crate) fn new(id: String, name: String) -> Result<Self> {
+    pub(crate) fn new(
+        id: String,
+        name: String,
+        polling_state_s: Duration,
+        log_level: LogLevel,
+    ) -> Result<Self> {
+        LogLevel::set_log_level(&log_level);
         let peer_connections: PeerConnections = DashMap::new();
         let (video_source, frame_producer) = PeerConnectionManager::file_video_source()?;
         let webrtc_pool = WebRTCPool::new(num_cpus::get())?;
@@ -81,6 +92,8 @@ impl Session {
             peer_connections,
             video_source,
             state: SessionState::Created,
+            polling_state_s,
+            log_level,
             start_time: None,
             stop_time: None,
             frame_producer,
@@ -116,6 +129,7 @@ impl Session {
 
         self.state = SessionState::Stopped;
         self.stop_time = Some(SystemTime::now());
+        LogLevel::set_log_level(&LogLevel::default());
 
         info!("stopped session: {:?}", self);
 
@@ -124,10 +138,10 @@ impl Session {
         Ok(())
     }
 
-    pub(crate) async fn export_peer_connection_stats(&self) {
+    pub(crate) async fn export_peer_connection_stats(&self, should_poll_state: bool) {
         for mut pc in self.peer_connections.iter_mut() {
             pc.value_mut()
-                .export_stats(self.id.to_string())
+                .export_stats(&self.id, should_poll_state)
                 .await
                 .map_err(|e| error!("Failed to export stats for peer connection: {}", e))
                 .ok();
@@ -273,14 +287,20 @@ macro_rules! get_session_attribute {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::data::Data;
     use crate::peer_connection::tests::new_peer_connection;
     use nanoid::nanoid;
 
     pub(crate) fn new_session() -> (String, Data) {
-        let session = Session::new(nanoid!(), "New Session".into()).unwrap();
+        let session = Session::new(
+            nanoid!(),
+            "New Session".into(),
+            Duration::from_secs(1),
+            LogLevel::None,
+        )
+        .unwrap();
         let session_id = session.id.clone();
         let data = Data::new();
         data.add_session(session).unwrap();
@@ -321,7 +341,7 @@ mod tests {
 
         let pc = new_peer_connection().0;
         session.add_peer_connection(pc).unwrap();
-        session.export_peer_connection_stats().await;
+        session.export_peer_connection_stats(true).await;
 
         // TODO: come up with an assertion, just testing we don't get an err
     }

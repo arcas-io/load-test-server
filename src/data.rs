@@ -61,12 +61,28 @@ impl SharedState {
 
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(1));
+            let mut elapsed = 1;
+
             interval.tick().await;
 
             loop {
                 for session in &data.sessions {
-                    session.value().export_peer_connection_stats().await;
+                    let should_poll_state = elapsed % session.polling_state_s.as_secs() == 0;
+
+                    session
+                        .value()
+                        .export_peer_connection_stats(should_poll_state)
+                        .await;
                 }
+
+                // if a session exists, increment
+                // if no session exists, restart elapsed
+                if &data.sessions.len() != &0 {
+                    elapsed += 1;
+                } else {
+                    elapsed = 1;
+                }
+
                 interval.tick().await;
             }
         });
@@ -76,15 +92,11 @@ impl SharedState {
 #[cfg(test)]
 mod tests {
 
-    use super::*;
-    use nanoid::nanoid;
+    use crate::session::tests::new_session;
 
     #[test]
     fn it_adds_and_gets_a_session() {
-        let session = Session::new(nanoid!(), "New Session".into()).unwrap();
-        let session_id = session.id.clone();
-        let data = Data::new();
-        data.add_session(session).unwrap();
+        let (session_id, data) = new_session();
         let added_session = data.get_session(&session_id).unwrap();
 
         assert_eq!(session_id, added_session.id);
