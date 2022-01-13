@@ -50,6 +50,7 @@ impl WebRTCPool {
             let peer_connection_factory = factory.create_factory_with_config(FactoryConfig {
                 video_encoder_factory: Some(Box::new(reactive_video_encoder)),
                 video_decoder_factory: Some(Box::new(PassthroughVideoDecoderFactory::new())),
+                audio_encoder_factory: None,
             })?;
             let item = WebRTCPoolItem {
                 id,
