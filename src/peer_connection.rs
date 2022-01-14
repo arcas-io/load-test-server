@@ -39,6 +39,7 @@ pub(crate) struct PeerConnectionState {
     pub(crate) video_send: VideoSendState,
     pub(crate) video_receive: VideoReceiveState,
 }
+
 // TODO: temp allowing dead code, only used in tests currently
 #[allow(dead_code)]
 pub(crate) struct PeerConnectionManager {
@@ -278,7 +279,6 @@ impl PeerConnectionManager {
 
 #[cfg(test)]
 pub(crate) mod tests {
-
     use super::*;
     use crate::stats::tests::video_receiver_stats;
     use libwebrtc::video_track_source::VideoTrackSourceWriter;

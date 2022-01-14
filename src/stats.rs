@@ -1,8 +1,11 @@
-use crate::error::Result;
+use crate::error::{Result, ServerError};
 use crate::helpers::systemtime_to_timestamp;
 
 use crate::session::{PeerConnectionState, Session, SessionState};
+use libwebrtc::peer_connection::PeerConnectionStats;
+use libwebrtc_sys::ffi::ArcasVideoSenderStats;
 
+use libwebrtc::transceiver::VideoTransceiver;
 use std::time::SystemTime;
 
 #[derive(Debug)]
@@ -47,13 +50,6 @@ impl From<SessionStats> for crate::server::webrtc::SessionStats {
     }
 }
 
-// #[derive(Debug)]
-// pub(crate) struct PeerConnectionStats {
-//     pub(crate) id: String,
-//     pub(crate) name: String,
-//     pub(crate) video_sender: Vec<ArcasVideoSenderStats>,
-// }
-
 // impl From<PeerConnectionStats> for crate::server::webrtc::PeerConnectionStats {
 //     fn from(
 //         peer_connection_stats: PeerConnectionStats,
@@ -70,7 +66,7 @@ impl From<SessionStats> for crate::server::webrtc::SessionStats {
 //     }
 // }
 
-// impl From<ArcasVideoSenderStats> for crate::server::webrtc::PeerConnectionStats {
+// impl From<ArcasVideoSenderStats> for PeerConnectionStats {
 //     fn from(
 //         video_sender_stats: ArcasVideoSenderStats,
 //     ) -> crate::server::webrtc::PeerConnectionStats {
@@ -112,6 +108,12 @@ pub(crate) async fn get_stats(session: &Session) -> Result<Stats> {
     Ok(stats)
 }
 
+pub(crate) async fn get_video_transceiver_stats(
+    tscv: &VideoTransceiver,
+) -> Result<PeerConnectionStats> {
+    Ok(tscv.get_stats().await?)
+}
+
 // pub(crate) async fn get_peer_connection_stats(
 //     peer_connection: &PeerConnectionManager,
 // ) -> Result<PeerConnectionStats> {
@@ -127,12 +129,21 @@ pub(crate) async fn get_stats(session: &Session) -> Result<Stats> {
 
 #[cfg(test)]
 pub(crate) mod tests {
-
     use super::*;
     use crate::data::Data;
+    use crate::peer_connection::tests::{new_peer_connection, peer_connection_params};
+    use crate::peer_connection::PeerConnectionManager;
     use crate::session::tests::new_session;
+    use crate::webrtc_pool::WebRTCPool;
+    use bytes::Bytes;
+    use libwebrtc::peer_connection::PeerConnectionStats;
+    use libwebrtc::video_frame::{EmptyVideoFrame, RawVideoFrame};
+    use libwebrtc::video_track_source::{VideoTrackSource, VideoTrackSourceWriter};
     use libwebrtc_sys::ffi::ArcasVideoSenderStats;
+    use nanoid::nanoid;
+    use std::fmt::Debug;
     use std::{thread, time::Duration};
+    use tracing_subscriber::fmt::Formatter;
 
     pub(crate) fn video_receiver_stats() -> ArcasVideoSenderStats {
         ArcasVideoSenderStats {
@@ -174,5 +185,47 @@ pub(crate) mod tests {
         let stats = get_stats(session).await.unwrap();
         println!("{:#?}", stats);
         assert_eq!(2, stats.session.elapsed_time);
+    }
+
+    // pub(crate) fn new_peer_connection() -> (
+    //     PeerConnectionManager,
+    //     WebRTCPool,
+    //     (VideoTrackSource, VideoTrackSourceWriter),
+    // ) {
+    //     let (pool, video_source) = peer_connection_params();
+    //     let pc;
+    //     {
+    //         let factory = pool.factory_list.get(&0).unwrap();
+    //         pc = PeerConnectionManager::new(
+    //             &factory.peer_connection_factory,
+    //             0,
+    //             nanoid!(),
+    //             "new".into(),
+    //         )
+    //         .unwrap();
+    //     }
+    //     (pc, pool, video_source)
+    // }
+    #[tokio::test]
+    async fn it_gets_transceiver_stats() {
+        let (session_id, data) = new_session();
+        let session = &mut *data.sessions.get_mut(&session_id).unwrap();
+        session.start().unwrap();
+        let (mut pc, pool, video_source) = new_peer_connection();
+        let tscv = pc
+            .add_transceiver(&pool, &video_source.0, "Testlabel".into())
+            .await
+            .unwrap();
+        pc.add_track(&pool, &video_source.0, "A track".into());
+        video_source
+            .1
+            .push_empty_frame(EmptyVideoFrame::create(1642022184u64).unwrap());
+        video_source
+            .1
+            .push_raw_frame(RawVideoFrame::create(1, 1, 1642022335, Bytes::from("!")).unwrap());
+        thread::sleep(Duration::from_millis(1000));
+        let stats = get_video_transceiver_stats(&tscv).await.unwrap();
+        let a = &stats;
+        assert_eq!(0, stats.video_receiver_stats.len());
     }
 }
