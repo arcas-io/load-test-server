@@ -1,4 +1,4 @@
-use crate::error::Result;
+use crate::error::{Result, ServerError};
 use crate::metrics::{write_video_rx_stats, write_video_tx_stats};
 use crate::webrtc_pool::WebRTCPool;
 
@@ -11,13 +11,13 @@ use libwebrtc::peer_connection::{
     PeerConnection, PeerConnectionConfig, PeerConnectionFactory, VideoReceiverStats,
     VideoSenderStats,
 };
-use libwebrtc::peer_connection_observer::ConnectionState;
+use libwebrtc::peer_connection_observer::{ConnectionState, ObserverSenders};
 use libwebrtc::sdp::{SDPType, SessionDescription};
 use libwebrtc::transceiver::{AudioTransceiver, TransceiverInit, VideoTransceiver};
 use libwebrtc::video_track::VideoTrack;
 use libwebrtc::video_track_source::VideoTrackSource;
 use libwebrtc_sys::ffi::ArcasVideoSenderStats;
-use tokio::sync::mpsc::Receiver;
+use tokio::sync::mpsc::{channel, Receiver};
 use tracing::warn;
 
 // Store the last bytes_sent in the enum
@@ -34,6 +34,13 @@ pub(crate) enum VideoReceiveState {
     NotReceiving(u64),
 }
 
+// Chosen largely at random. This should be enough bufferring to support any use case.
+const CONNECTION_STATE_BUFFERING: usize = 100;
+// We should not have more than a 10 ice candidates at a given time
+const ICE_CANDIDATE_BUFFERING: usize = 100;
+// We *may* have more video tracks than this at a time but it's highly unlikely.
+const VIDEO_TRACK_BUFFERING: usize = 100;
+
 #[derive(Debug, PartialEq)]
 pub(crate) struct PeerConnectionState {
     pub(crate) video_send: VideoSendState,
@@ -48,6 +55,9 @@ pub(crate) struct PeerConnectionManager {
     pub(crate) webrtc_peer_connection: PeerConnection,
     pub(crate) pool_id: u32,
     pub(crate) state: PeerConnectionState,
+    connection_state_rx: Option<Receiver<ConnectionState>>,
+    ice_candidates_rx: Option<Receiver<ICECandidate>>,
+    video_track_rx: Option<Receiver<VideoTransceiver>>,
 }
 
 impl fmt::Debug for PeerConnectionManager {
@@ -63,8 +73,19 @@ impl PeerConnectionManager {
         id: String,
         name: String,
     ) -> Result<PeerConnectionManager> {
-        let webrtc_peer_connection =
-            peer_connection_factory.create_peer_connection(PeerConnectionConfig::default())?;
+        let (connection_state_tx, connection_state_rx) = channel(CONNECTION_STATE_BUFFERING);
+        let (ice_candidates_tx, ice_candidates_rx) = channel(ICE_CANDIDATE_BUFFERING);
+        let (video_track_tx, video_track_rx) = channel(VIDEO_TRACK_BUFFERING);
+
+        let webrtc_peer_connection = peer_connection_factory.create_peer_connection(
+            PeerConnectionConfig::default(),
+            ObserverSenders {
+                connection_state: Some(connection_state_tx),
+                ice_candidate: Some(ice_candidates_tx),
+                video_track: Some(video_track_tx),
+                ..Default::default()
+            },
+        )?;
 
         let pc = PeerConnectionManager {
             id,
@@ -75,6 +96,9 @@ impl PeerConnectionManager {
                 video_send: VideoSendState::NotSending(0),
                 video_receive: VideoReceiveState::NotReceiving(0),
             },
+            connection_state_rx: Some(connection_state_rx),
+            ice_candidates_rx: Some(ice_candidates_rx),
+            video_track_rx: Some(video_track_rx),
         };
 
         Ok(pc)
@@ -221,15 +245,21 @@ impl PeerConnectionManager {
     }
 
     pub fn connection_state_rx(&mut self) -> Result<Receiver<ConnectionState>> {
-        Ok(self.webrtc_peer_connection.take_connection_state_rx()?)
+        self.connection_state_rx.take().ok_or_else(|| {
+            ServerError::InternalError("connection_state_rx already taken".to_string())
+        })
     }
 
     pub fn ice_candidates_rx(&mut self) -> Result<Receiver<ICECandidate>> {
-        Ok(self.webrtc_peer_connection.take_ice_candidate_rx()?)
+        self.ice_candidates_rx.take().ok_or_else(|| {
+            ServerError::InternalError("ice_candidates_rx already taken".to_string())
+        })
     }
 
     pub fn video_track_rx(&mut self) -> Result<Receiver<VideoTransceiver>> {
-        Ok(self.webrtc_peer_connection.take_video_track_rx()?)
+        self.video_track_rx
+            .take()
+            .ok_or_else(|| ServerError::InternalError("video_track_rx already taken".to_string()))
     }
 
     pub(crate) async fn get_transceivers(&self) -> (Vec<VideoTransceiver>, Vec<AudioTransceiver>) {
