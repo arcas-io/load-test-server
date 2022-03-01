@@ -133,6 +133,7 @@ impl Session {
 
         info!("stopped session: {:?}", self);
 
+        #[allow(clippy::drop_ref)]
         drop(self);
 
         Ok(())
