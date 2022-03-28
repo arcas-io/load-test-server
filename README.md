@@ -9,6 +9,15 @@ Update `.env` with the appropriate values.
 
 
 ## Running
+
+## Dependent Services
+To run containers of dependent services:
+```shell
+./start.sh
+```
+
+## Running the Server
+
 ```shell
 RUST_LOG=INFO cargo run
 ```
