@@ -1,4 +1,7 @@
+target
 .env
+.cargo
+
 perf.data*
 stacks.folded
 flamegraph.svg

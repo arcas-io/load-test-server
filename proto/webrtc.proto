@@ -9,8 +9,7 @@ service WebRtc {
   rpc StopSession(StopSessionRequest) returns (Empty);
   rpc GetStats(GetStatsRequest) returns (GetStatsResponse);
   // rpc GetPeerConnectionStats(GetPeerConnectionStatsRequest) returns (GetPeerConnectionStatsResponse);
-  rpc CreatePeerConnection(CreatePeerConnectionRequest)
-      returns (Empty);
+  rpc CreatePeerConnection(CreatePeerConnectionRequest) returns (Empty);
   rpc CreateOffer(CreateSDPRequest) returns (CreateSDPResponse);
   rpc CreateAnswer(CreateSDPRequest) returns (CreateSDPResponse);
   rpc SetLocalDescription(SetSDPRequest) returns (SetSDPResponse);
@@ -46,7 +45,7 @@ message StartSessionRequest { string session_id = 1; }
 // Stop Session
 message StopSessionRequest { string session_id = 1; }
 
-// Get Stats
+// Get Session Stats
 message GetStatsRequest { string session_id = 1; }
 message PeerConnectionState {
   int32 num_sending = 1;
@@ -68,6 +67,13 @@ message GetStatsResponse {
   SessionStats session = 1;
 }
 
+
+// Create PeerConnection
+message CreatePeerConnectionRequest {
+  string session_id = 1;
+  string peer_connection_id = 2;
+  string name = 3;
+}
 
 // // Get Peer Connection Stats
 // message GetPeerConnectionStatsRequest { string session_id = 1; string peer_connection_id = 2; }
@@ -96,21 +102,6 @@ message GetStatsResponse {
 //   PeerConnectionVideoSenderStats video_sender = 1;
 // }
 
-// Get Tranceiver
-message GetTransceiversRequest {
-  string session_id = 1;
-  string peer_connection_id = 2;
-}
-message GetTransceiversResponse {
-  repeated Transceiver transceivers = 1;
-}
-
-// Create PeerConnection
-message CreatePeerConnectionRequest {
-  string session_id = 1;
-  string peer_connection_id = 2;
-  string name = 3;
-}
 
 enum SDPType {
   OFFER = 0;
@@ -178,4 +169,14 @@ message PeerConnectionObserverMessage {
         IceCandidate ice_candidate = 1;
         VideoTransceiver video_transceiver = 2;
     }
+}
+
+
+// Get Tranceiver
+message GetTransceiversRequest {
+  string session_id = 1;
+  string peer_connection_id = 2;
+}
+message GetTransceiversResponse {
+  repeated Transceiver transceivers = 1;
 }
