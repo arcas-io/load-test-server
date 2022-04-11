@@ -107,7 +107,7 @@ impl PeerConnectionManager {
     /// Send the callback to the rust ffi bindings and just listen for the first message.
     ///
     /// If the message fails, just return an empty vec.
-    pub(crate) async fn get_stats(&self) -> Result<Vec<ArcasVideoSenderStats>> {
+    pub(crate) async fn _get_stats(&self) -> Result<Vec<ArcasVideoSenderStats>> {
         let stats = self.webrtc_peer_connection.get_stats().await?;
         Ok(stats.video_sender_stats)
     }
@@ -244,7 +244,7 @@ impl PeerConnectionManager {
         Ok(())
     }
 
-    pub fn connection_state_rx(&mut self) -> Result<Receiver<ConnectionState>> {
+    pub fn _connection_state_rx(&mut self) -> Result<Receiver<ConnectionState>> {
         self.connection_state_rx.take().ok_or_else(|| {
             ServerError::InternalError("connection_state_rx already taken".to_string())
         })
@@ -351,7 +351,6 @@ pub(crate) mod tests {
     #[tokio::test]
     async fn it_gets_and_exports_stats_for_a_peer_connection() {
         let session_id = nanoid!();
-        let polling_state_s = Duration::from_secs(1);
         let (mut pc, pool, _) = new_peer_connection();
         let (video_source, _video_writer) = PeerConnectionManager::file_video_source().unwrap();
         pc.add_track(&pool, &video_source, "Testlabel".into())
@@ -388,13 +387,11 @@ pub(crate) mod tests {
             .await
             .unwrap();
 
-        let stats = pc.get_stats().await.unwrap();
-        println!("{:?}", stats);
+        let _stats = pc._get_stats().await.unwrap();
 
         sleep(Duration::from_millis(1000)).await;
 
-        let stats = pc.get_stats().await.unwrap();
-        println!("{:?}", stats);
+        let _stats = pc._get_stats().await.unwrap();
 
         pc.export_stats(&session_id, true).await.unwrap();
         pc_recv.export_stats(&session_id, true).await.unwrap();

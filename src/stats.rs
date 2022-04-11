@@ -1,9 +1,9 @@
-use crate::error::{Result, ServerError};
+use crate::error::Result;
 use crate::helpers::systemtime_to_timestamp;
 
 use crate::session::{PeerConnectionState, Session, SessionState};
 use libwebrtc::peer_connection::PeerConnectionStats;
-use libwebrtc_sys::ffi::ArcasVideoSenderStats;
+// use libwebrtc_sys::ffi::ArcasVideoSenderStats;
 
 use libwebrtc::transceiver::VideoTransceiver;
 use std::time::SystemTime;
@@ -108,7 +108,7 @@ pub(crate) async fn get_stats(session: &Session) -> Result<Stats> {
     Ok(stats)
 }
 
-pub(crate) async fn get_video_transceiver_stats(
+pub(crate) async fn _get_video_transceiver_stats(
     tscv: &VideoTransceiver,
 ) -> Result<PeerConnectionStats> {
     Ok(tscv.get_stats().await?)
@@ -130,20 +130,20 @@ pub(crate) async fn get_video_transceiver_stats(
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use crate::data::Data;
-    use crate::peer_connection::tests::{new_peer_connection, peer_connection_params};
-    use crate::peer_connection::PeerConnectionManager;
+    // use crate::data::Data;
+    // use crate::peer_connection::tests::{new_peer_connection, peer_connection_params};
+    // use crate::peer_connection::PeerConnectionManager;
     use crate::session::tests::new_session;
-    use crate::webrtc_pool::WebRTCPool;
-    use bytes::Bytes;
-    use libwebrtc::peer_connection::PeerConnectionStats;
-    use libwebrtc::video_frame::{EmptyVideoFrame, RawVideoFrame};
-    use libwebrtc::video_track_source::{VideoTrackSource, VideoTrackSourceWriter};
+    // use crate::webrtc_pool::WebRTCPool;
+    // use bytes::Bytes;
+    // use libwebrtc::peer_connection::PeerConnectionStats;
+    // use libwebrtc::video_frame::{EmptyVideoFrame, RawVideoFrame};
+    // use libwebrtc::video_track_source::{VideoTrackSource, VideoTrackSourceWriter};
     use libwebrtc_sys::ffi::ArcasVideoSenderStats;
-    use nanoid::nanoid;
-    use std::fmt::Debug;
+    // use nanoid::nanoid;
+    // use std::fmt::Debug;
     use std::{thread, time::Duration};
-    use tracing_subscriber::fmt::Formatter;
+    // use tracing_subscriber::fmt::Formatter;
 
     pub(crate) fn video_receiver_stats() -> ArcasVideoSenderStats {
         ArcasVideoSenderStats {
@@ -206,26 +206,27 @@ pub(crate) mod tests {
     //     }
     //     (pc, pool, video_source)
     // }
-    #[tokio::test]
-    async fn it_gets_transceiver_stats() {
-        let (session_id, data) = new_session();
-        let session = &mut *data.sessions.get_mut(&session_id).unwrap();
-        session.start().unwrap();
-        let (mut pc, pool, video_source) = new_peer_connection();
-        let tscv = pc
-            .add_transceiver(&pool, &video_source.0, "Testlabel".into())
-            .await
-            .unwrap();
-        pc.add_track(&pool, &video_source.0, "A track".into());
-        video_source
-            .1
-            .push_empty_frame(EmptyVideoFrame::create(1642022184u64).unwrap());
-        video_source
-            .1
-            .push_raw_frame(RawVideoFrame::create(1, 1, 1642022335, Bytes::from("!")).unwrap());
-        thread::sleep(Duration::from_millis(1000));
-        let stats = get_video_transceiver_stats(&tscv).await.unwrap();
-        let a = &stats;
-        assert_eq!(0, stats.video_receiver_stats.len());
-    }
+
+    // #[tokio::test]
+    // async fn it_gets_transceiver_stats() {
+    //     let (session_id, data) = new_session();
+    //     let session = &mut *data.sessions.get_mut(&session_id).unwrap();
+    //     session.start().unwrap();
+    //     let (mut pc, pool, video_source) = new_peer_connection();
+    //     let tscv = pc
+    //         .add_transceiver(&pool, &video_source.0, "Testlabel".into())
+    //         .await
+    //         .unwrap();
+    //     pc.add_track(&pool, &video_source.0, "A track".into());
+    //     video_source
+    //         .1
+    //         .push_empty_frame(EmptyVideoFrame::create(1642022184u64).unwrap());
+    //     video_source
+    //         .1
+    //         .push_raw_frame(RawVideoFrame::create(1, 1, 1642022335, Bytes::from("!")).unwrap());
+    //     thread::sleep(Duration::from_millis(1000));
+    //     let stats = get_video_transceiver_stats(&tscv).await.unwrap();
+    //     let a = &stats;
+    //     assert_eq!(0, stats.video_receiver_stats.len());
+    // }
 }

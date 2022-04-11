@@ -1,5 +1,5 @@
 [package]
-name = "server"
+name = "load-test-server"
 version = "0.1.2"
 authors = ["David DiMaria <david@littlebearlabs.io>"]
 edition = "2018"
@@ -11,9 +11,9 @@ dotenv = "0.15.0"
 envy = "0.4"
 lazy_static = "1.4.0"
 log = "0.4.14"
-media_pipeline = { path = "../media_pipeline"}
-libwebrtc-sys = { path = "../libwebrtc-sys"}
-libwebrtc = { path = "../libwebrtc"}
+media_pipeline = { git = "https://github.com/arcas-io/media-pipeline", branch = "main" }
+libwebrtc-sys = { git = "https://github.com/arcas-io/libwebrtc", branch = "main" }
+libwebrtc = { git = "https://github.com/arcas-io/libwebrtc", branch = "main" }
 nanoid = "0.4.0"
 pretty_env_logger = "0.4.0"
 prost = "0.9"
