@@ -7,7 +7,7 @@ on:
 
 jobs:
   linux-x64-test:
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: [self-hosted, linux, x64]
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
